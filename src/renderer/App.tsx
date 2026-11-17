@@ -196,7 +196,9 @@ export const App: React.FC = () => {
   const askNextConfirmation = useCallback((reasons: ConfirmationReason[]) => {
     const [next, ...rest] = reasons;
     setPendingConfirmations(rest);
-    openDialog(next === 'overflow_clipped' ? 'confirm-clip' : 'confirm-unavailable');
+    openDialog(
+      next === 'layout_differs' ? 'confirm-layout' : next === 'overflow_clipped' ? 'confirm-clip' : 'confirm-unavailable'
+    );
   }, [openDialog]);
 
   const handlePrintClick = useCallback(async () => {
@@ -350,6 +352,17 @@ export const App: React.FC = () => {
           }
           return selected;
         }}
+      />
+
+      {/* The print window laid the text out differently from the preview */}
+      <ConfirmDialog
+        isOpen={activeDialog === 'confirm-layout'}
+        title="Label May Print Differently"
+        message="The label wraps differently on the page that will be printed than in the preview, so the paper may not look like what you see. Print it anyway?"
+        confirmLabel="Print Anyway"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmStep}
+        onCancel={handleCancelPrepare}
       />
 
       {/* Overflow Confirmation Dialog */}

@@ -43,7 +43,12 @@ export const LabelSurface = forwardRef<HTMLDivElement, LabelSurfaceProps>(
     const isPortrait = !isSmallLandscape && orientation === 'portrait';
     const isEmpty = text.length === 0;
 
-    useImperativeHandle(ref, () => editorRef.current!, []);
+    // The label's text element is not always the same DOM element: React reuses elements by
+    // position, so changing between the portrait, landscape (print) and 2 × 1 layouts gives the
+    // text box a new element, or makes the old one the safe-area wrapper. The handle is therefore
+    // refreshed on every render. A handle created once would measure a detached or wrong element
+    // from then on, and the overflow warning would stop working.
+    useImperativeHandle(ref, () => editorRef.current!);
 
     // Keep the live editor synchronized when text changes externally, while
     // leaving the active caret-owned DOM alone during normal typing.

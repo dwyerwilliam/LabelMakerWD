@@ -13,7 +13,7 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 | --- | --- | --- | --- | --- |
 | LM-001 | P1 | Print | No submission watchdog; a lost print callback locks Print until restart | Fixed |
 | LM-002 | P1 | Print | Paused or errored queues print without the required confirmation | Fixed |
-| LM-003 | P2 | Print | Preview/print line-geometry mismatch only logs a warning | Decision |
+| LM-003 | P2 | Print | Preview/print line-geometry mismatch only logs a warning | Fixed (asks the user; see LM-058) |
 | LM-004 | P1 | Printers | A vanished saved queue is silently replaced by another queue (A05) | Fixed |
 | LM-005 | P1 | Printers | Failed capability queries report the queue as Ready | Fixed |
 | LM-006 | P2 | Printers | No rescan when the window regains focus | Fixed |
@@ -66,6 +66,10 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 | LM-053 | P1 | CI | The first CI run failed on Windows: two test workers raced to download the Electron binary | Fixed |
 | LM-054 | P2 | CI / Printers | The first CI run failed on macOS: the printer test fixture had no connection data, and the app ignored the macOS device URI | Fixed (macOS untested) |
 | LM-055 | P3 | Deps | Build tools a major version behind (Vite 6, Tailwind 3, plugin-react 4) and Node 22 as the baseline | Fixed |
+| LM-056 | P1 | Print | After a 4 × 6 landscape label was the first one shown, the print window reported "fits" for every later label, so the clipped-label question was never asked | Fixed |
+| LM-057 | P2 | Print | The print window could measure before React had drawn the new label | Fixed (not reproduced in isolation) |
+| LM-058 | P2 | Print | A label that wraps differently on paper than in the preview printed without a word | Fixed |
+| LM-059 | P3 | Tests | Spec A09 (same wrapping at any window size and display scale) had no test | Fixed (no defect found) |
 
 ## Details
 
@@ -81,10 +85,11 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Fix:** All three add the `printer_unavailable` reason (renamed from `printer_offline`). The dialog names the profile ("4 × 6 (SP410)"), the queue and the reported state.
 **Verified:** `it.each(['offline','paused','error'])` unit test; UI tests for the dialog text.
 
-### LM-003 · P2 · Print · Decision
-**Where:** `printService.ts` `prepare` (`compareFingerprints` mismatch is logged, not enforced).
-**Problem:** Technical spec §7 says a fingerprint mismatch aborts before spooling. The code deliberately relaxes this to a warning (commit "Allow canonical print renderer geometry") because the live editor and the rotated print sheet measure lines differently. Page dimensions are still enforced.
-**Proposed fix:** Needs a decision. Either keep the relaxation and update the spec, or measure the editor mirror exactly like the print sheet and enforce again.
+### LM-003 · P2 · Print · Fixed (asks the user; see LM-058)
+**Where:** `printService.ts` `prepare`, `layout.ts` `compareFingerprints`.
+**Problem:** Technical spec §7 says a fingerprint mismatch aborts before spooling. The code relaxed it to a log line (commit "Allow canonical print renderer geometry") because the editor and the print window disagreed, mostly for 4 × 6 landscape.
+**Finding:** The disagreement was not a rounding difference. Both sides were measuring the wrong element in landscape (LM-056), so every landscape label reported one line. A parity run of 405 labels (3 fonts, 3 sizes, 3 layouts, alignments, 11 awkward texts) matched exactly in 377 cases before the fixes; the other 28 were the landscape defect (21) and a stale measurement (7). After the fixes all 405 match within 0.05 pt.
+**Fix:** See LM-058. A moved line box is still only logged, a different wrap or overflow answer now asks the user, and a wrong page size still stops the print.
 
 ### LM-004 · P1 · Printers · Fixed
 **Where:** `src/shared/printerSelection.ts` (new `resolveQueueSelection`), `deviceStore.ts`, `PrinterStatus.tsx`, `SettingsDialog.tsx`.
@@ -370,6 +375,29 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Verified:** typecheck, lint, 130 unit, 44 UI, 12 Electron tests and the packaged smoke test; `npm audit` 0 vulnerabilities. Pixel comparison of ten screenshots (light and dark: editor, 2 × 1, settings, font list, confirmation) before and after Tailwind 4: identical layout everywhere. Colours shift slightly because Tailwind 4 uses a new palette (the Print button blue is a little brighter, dark backgrounds differ by a few levels), and the font-list arrow moves by a pixel.
 **Not covered:** the four GitHub Actions bumps (checkout 7, setup-node 7, upload-artifact 7, download-artifact 8) were not applied. They are pinned by commit SHA and can only be tested by a CI run; Dependabot's pull requests are the way to take them once CI on `build-v1` is green.
 
+### LM-056 · P1 · Print · Fixed
+**Where:** `src/renderer/label/LabelSurface.tsx` (`useImperativeHandle(ref, …, [])`).
+**Problem:** The label's measuring handle was created once, when the component first mounted. React reuses DOM elements by position, so when a different layout is shown (4 × 6 portrait, 4 × 6 landscape in print mode, 2 × 1) the text box becomes a new element, or the old one becomes the safe-area wrapper. In the hidden print window, if the first label ever shown was 4 × 6 landscape, the handle pointed at an element that was removed afterwards. Every later label was measured as an empty, detached element: overflow `false`, one line. The `overflow_clipped` question (spec A12) is decided from that report, so a clipped label printed without asking until the app was restarted. If the first label was portrait, landscape was measured on the wrong element (the wrapper), which gave the right overflow answer by luck but one line only. The editor's own measuring copy had the same flaw, hidden because the app always starts on portrait.
+**Fix:** The handle is refreshed on every render, so it always points at the real text element.
+**Verified:** UI test sends landscape first, then portrait and 2 × 1 labels, and checks overflow and line count each time (fails on the old code: `Expected: true, Received: false`); the same check against the real hidden window in Electron (also fails on the old code); the parity test below fails on the old code with `measured 1 lines for 30 typed`.
+
+### LM-057 · P2 · Print · Fixed (not reproduced in isolation)
+**Where:** `src/renderer/print/PrintDocument.tsx`.
+**Problem:** The print page measured the label from the job callback: it set the new label, waited for the font and one frame, then measured whatever element was there. If React had not yet drawn the new label, the report described the label shown before. In the parity run this happened in 7 of 405 cases, always a one-line label followed by a big one (the report repeated the previous label's line count).
+**Fix:** Measurement now runs in an effect that depends on the job, so it starts only after the page shows that job, and a newer job cancels it.
+**Limit:** An isolated test that alternates one-line and 100-line labels did not reproduce the stale report with the old code (it appeared only with two pages taking turns in front), so no test guards this part on its own.
+
+### LM-058 · P2 · Print · Fixed
+**Where:** `printService.ts`, `layout.ts` (`compareFingerprints` now says what differs), `App.tsx`, `contracts.ts`.
+**Problem:** When the print window wrapped the text differently from the preview, the label printed anyway and only a log line recorded it. The preview is the promise of this app.
+**Fix:** A different line count, different line starts or a different overflow answer adds the confirmation `layout_differs` (asked first): "Label May Print Differently … Print it anyway?" with Print Anyway or Cancel. Cancel submits nothing. A small shift of a line box (rectangles beyond 0.05 pt) is only logged, so display scaling and sub-pixel differences cannot block printing, and a page of the wrong size still stops the print. This follows the spirit of spec §7 ("mismatch aborts") but lets the owner decide instead of blocking.
+**Verified:** 4 unit tests (wrap differs; overflow differs and the order of the questions; a 0.4 pt shift does not ask; wrong page size still refuses), UI test for the dialog (Cancel and Print Anyway). The parity test (2 fonts × 3 layouts × 2 sizes × alignments × 7 texts, 132 labels) proves that today the editor and the print window agree, so the question only appears when something really diverges.
+
+### LM-059 · P3 · Tests · Fixed (no defect found)
+**Where:** new `tests/ui/layoutStability.spec.ts`.
+**Check:** Spec A09 asks for the same wrapping at different window sizes and display scales. The same multi-line text (with a blank line and a very long word) is measured at 800 × 600, 1100 × 760, 1600 × 900 and at 150 % and 200 % scale for each of 4 × 6 portrait, 4 × 6 landscape and 2 × 1: the line starts, the overflow answer and every line box agree within 0.05 pt in all 15 combinations.
+**Not covered:** the real hidden print window at a non-100 % Windows display scale; the Electron suite runs at the machine's own scale.
+
 ## Run log
 
 - 2026-11-17 01:44 EST — file created from the first code review plus the zod upgrade work.
@@ -385,3 +413,4 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 - 2026-11-17 09:08 EST — Owner tested both real printers (SP410, SP310) from `build-v1` at 6b09da4: "looks good". Pushed to origin earlier; CI run 44087775714 not yet checked.
 - 2026-11-17 09:17 EST — Owner confirmed both printers print correctly and decided: fixed stock per printer (4 × 6 and 2.25 × 1.25), no paper selection, stale branches may go, audit flags and version bumps wanted. First CI run (44087775714) had failed: LM-053 and LM-054 found and fixed. LM-018 (branches), LM-020 (closed by decision) and LM-024 (0 vulnerabilities) done.
 - 2026-11-17 09:25 EST — LM-055: Vite 8, Tailwind 4 and Node 26/24 baseline done and verified (0 audit findings). Visual baseline compared before and after Tailwind 4.
+- 2026-11-17 10:08 EST — LM-056 to LM-059: a layout-parity experiment (405 labels) found that the print window measured the wrong element after a landscape-first session (clipped-label question skipped) and sometimes measured before the new label was drawn. Fixed; the spec's preview/print mismatch check is back as a question to the user (LM-003 closed). New tests: layout parity, print document, resize and display scale, overflow indicator, real-Electron overflow report.

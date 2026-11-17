@@ -9,6 +9,8 @@ export interface MockOptions {
   firstLaunch?: boolean;
   /** A printer the user saved earlier for the 4 × 6 profile. */
   saved4x6?: string;
+  /** The orientation saved for the 4 × 6 profile (default portrait). */
+  savedOrientation?: 'portrait' | 'landscape';
   /** The font family saved for the 4 × 6 profile (default Arial). */
   savedFont?: string;
   /** Font families the fake system reports as installed. Omit to leave `queryLocalFonts` undefined (the app then checks common fonts itself). */
@@ -24,7 +26,7 @@ export async function installMockApi(page: Page, options: MockOptions = {}): Pro
   await page.addInitScript((opts) => {
     const profiles = {
       '4x6': {
-        orientation: 'portrait',
+        orientation: opts.savedOrientation ?? 'portrait',
         fontFamily: opts.savedFont ?? 'Arial',
         fontSizePt: 24,
         alignment: 'center',

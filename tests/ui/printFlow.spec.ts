@@ -53,6 +53,27 @@ test('cancelling the second question submits nothing and discards the preparatio
   expect(calls.cancel).toBe(1);
 });
 
+test('a label that wraps differently on the page than in the preview asks first', async ({ page }) => {
+  await openWithLabel(page);
+  await configureMock(page, (mock) => {
+    mock.prepareReasons = ['layout_differs'];
+  });
+
+  await printButton(page).click();
+  await expect(page.getByRole('heading', { name: 'Label May Print Differently' })).toBeVisible();
+  expect((await mockCalls(page)).confirm).toBe(0);
+
+  // Cancel submits nothing.
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  expect((await mockCalls(page)).confirm).toBe(0);
+  expect((await mockCalls(page)).cancel).toBe(1);
+
+  // Choosing to print anyway sends the label.
+  await printButton(page).click();
+  await page.getByRole('button', { name: 'Print Anyway' }).click();
+  await expect.poll(async () => (await mockCalls(page)).confirm).toBe(1);
+});
+
 test('an offline printer alone asks once and then sends', async ({ page }) => {
   await openWithLabel(page, { queueStatus: 'offline' });
   await configureMock(page, (mock) => {

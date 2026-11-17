@@ -3,6 +3,7 @@ import { create } from 'zustand';
 export type DialogType =
   | 'none'
   | 'settings'
+  | 'confirm-layout'
   | 'confirm-clip'
   | 'confirm-unavailable'
   | 'confirm-uncertain'

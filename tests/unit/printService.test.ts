@@ -130,6 +130,42 @@ describe('PrintService', () => {
       expect(result.confirmationReasons).toEqual(['overflow_clipped', 'printer_unavailable']);
     });
 
+    describe('when the print window lays the text out differently from the preview', () => {
+      const twoLines = {
+        lineTextOffsets: [0, 3],
+        lineRectsPt: [
+          { x: 0, y: 0, width: 10, height: 10 },
+          { x: 0, y: 10, width: 10, height: 10 },
+        ],
+      };
+
+      it('asks the user when the text wraps differently', async () => {
+        const { service } = setup({ measured: twoLines });
+        const result = await service.prepare(snapshotFor());
+        expect(result.confirmationReasons).toEqual(['layout_differs']);
+        expect(result.requiresConfirmation).toBe(true);
+        expect(result.readyToSubmit).toBe(false);
+      });
+
+      it('asks when only the overflow answer differs, and lists it before the other reasons', async () => {
+        const { service } = setup({ queue: { status: 'paused' }, measured: { overflow: true } });
+        const result = await service.prepare(snapshotFor());
+        expect(result.confirmationReasons).toEqual(['layout_differs', 'overflow_clipped', 'printer_unavailable']);
+      });
+
+      it('does not ask for a small shift of a line box, which is only logged', async () => {
+        const { service } = setup({ measured: { lineRectsPt: [{ x: 0.4, y: 0, width: 10, height: 10 }] } });
+        const result = await service.prepare(snapshotFor());
+        expect(result.confirmationReasons).toEqual([]);
+        expect(result.readyToSubmit).toBe(true);
+      });
+
+      it('still refuses a page of the wrong size', async () => {
+        const { service } = setup({ measured: { logicalWidthPt: 200 } });
+        await expect(service.prepare(snapshotFor())).rejects.toThrow(/page dimensions mismatch/);
+      });
+    });
+
     it('refuses when no queue is selected for the profile or the print window is gone', async () => {
       const { service } = setup();
       await expect(service.prepare(snapshotFor({ profile: '2x1' }))).rejects.toThrow(/No printer queue is selected/);

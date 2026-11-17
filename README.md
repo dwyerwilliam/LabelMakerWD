@@ -16,7 +16,7 @@ Based on [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md) and [TECHNICAL_SPEC.md](TECHNI
 
 This application has only been tested on Windows 11. It has not been tested on other Windows versions or operating systems. The macOS build is experimental and currently untested; it may be tested and confirmed in the future. A macOS installer does not imply that printing or other features work on macOS.
 
-The supported label profiles are 4 × 6 for the iDPRT SP410 and 2 × 1 for the iDPRT SP310 with DYMO 30334 stock (actual size 2.25 × 1.25 inches). Additional label sizes are not planned.
+The supported label profiles are 4 × 6 for the iDPRT SP410 and 2 × 1 for the iDPRT SP310 with DYMO 30334 stock (actual size 2.25 × 1.25 inches). Each printer has one fixed stock and there is no paper selection. Additional label sizes are not planned.
 
 ## Setting up a printer
 
@@ -119,7 +119,7 @@ Continuous integration (`.github/workflows/ci.yml`) runs all of the above except
 
 - Printing has only been verified on Windows 11 with an SP410 and an SP310. macOS is experimental.
 - The app cannot tell whether paper came out, only whether the operating system accepted the job.
-- The SP310's default paper in the driver is not DYMO 30334; the app sends its own page size, but it does not yet check the driver's media settings against the profile.
+- Each printer prints on one fixed stock: 4 × 6 inches for the SP410 and 2.25 × 1.25 inches for the SP310. There is no paper selection, and the app does not check the driver's media settings (the SP310 driver's default paper is not DYMO 30334; the app sends its own page size).
 - No saved labels, images, barcodes, templates, other label sizes, Bluetooth or network printing (see the specification's exclusions).
 
 ## License
