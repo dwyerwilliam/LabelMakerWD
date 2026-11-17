@@ -152,7 +152,7 @@ test('an eBay-style letter PDF waits in the crop dialog, then prints only the la
   expect(s.dialog!.isNewSource).toBe(true);
   expect(s.dialog!.status).toBeNull();
   const crop = s.dialog!.initial.crop;
-  [crop.x, crop.y, crop.width, crop.height].forEach((v, i) => expect(v).toBeCloseTo([0.049, 0.038, 0.489, 0.56][i], 2));
+  [crop.x, crop.y, crop.width, crop.height].forEach((v, i) => expect(v).toBeCloseTo([0.054, 0.042, 0.48, 0.553][i], 2));
   // Nothing is the current label until the user accepts.
   expect(s.hasSource).toBe(false);
   expect(s.processed).toBeNull();
@@ -166,7 +166,8 @@ test('an eBay-style letter PDF waits in the crop dialog, then prints only the la
   s = await state(page);
   expect(s.activeDialog).toBe('none');
   expect(s.sourceKind).toBe('pdf');
-  expect(s.processed!.caption).toMatch(/^From ebay-letter\.pdf, page 1 · (actual size|prints at 9\d% of original size)$/);
+  // A label that fits in 4 × 6 is cropped at 4 × 6 (here 4.08 × 6.08 for its border), so it prints at true size.
+  expect(s.processed!.caption).toBe('From ebay-letter.pdf, page 1 · actual size');
   expect(s.remembered).toHaveLength(1);
   expect(s.remembered[0]).toMatchObject({ pageWidthPt: 612, pageHeightPt: 792, rotation: 0 });
 

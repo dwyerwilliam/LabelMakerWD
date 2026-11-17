@@ -18,6 +18,9 @@ const RULE_MIN_LENGTH_IN = 7.0;        // ... and is longer than any label could
 const RULE_MAX_INNER_GAP_IN = 0.25;    // ... and has no gap longer than this (dashes, not unrelated content)
 const MAX_DEPTH = 6;
 const PAD_IN = 0.06;
+// A label whose ink fits within 4 × 6 (plus this much, for a border stroke) is cropped at
+// exactly 4 × 6 or a hair more, so it prints at true size rather than shrunk by the padding.
+const ACTUAL_SIZE_SLACK_IN = 0.1;
 const CONTENT_PAD_IN = 0.1;
 // Candidate limits, in inches, on the trimmed ink box (short side s, long side l):
 const S_MIN = 2.5, S_MAX = 4.6, L_MIN = 3.75, L_MAX = 7.0, RATIO_MIN = 1.2, RATIO_MAX = 1.9;
@@ -265,7 +268,31 @@ export function detectLabelRegion(img: GrayImage, dpi: number): PxRect | null {
   }
 
   if (!best) return null;
-  return padRect(best.rect, Math.round(PAD_IN * dpi), width, height);
+  return labelCrop(best.rect, dpi, width, height);
+}
+
+/**
+ * The crop for a detected label. A label that fits within 4 × 6 gets a 4 × 6 (or 6 × 4) window
+ * centered on it, never smaller than its ink plus one pixel each side, so it prints at true size.
+ * A bigger one gets the usual padding and is scaled down to fit.
+ */
+function labelCrop(ink: PxRect, dpi: number, width: number, height: number): PxRect {
+  const portrait = ink.height >= ink.width;
+  const targetW = (portrait ? 4 : 6) * dpi;
+  const targetH = (portrait ? 6 : 4) * dpi;
+  const slack = ACTUAL_SIZE_SLACK_IN * dpi;
+  if (ink.width > targetW + slack || ink.height > targetH + slack) {
+    return padRect(ink, Math.round(PAD_IN * dpi), width, height);
+  }
+
+  const w = Math.min(width, Math.max(Math.round(targetW), ink.width + 2));
+  const h = Math.min(height, Math.max(Math.round(targetH), ink.height + 2));
+  const cx = ink.x + ink.width / 2;
+  const cy = ink.y + ink.height / 2;
+  // Centered on the ink, shifted (not shrunk) to stay on the page.
+  const x = Math.min(width - w, Math.max(0, Math.round(cx - w / 2)));
+  const y = Math.min(height - h, Math.max(0, Math.round(cy - h / 2)));
+  return { x, y, width: w, height: h };
 }
 
 /** Fallback suggestion when detection finds nothing: all the page's content, padded. */

@@ -595,7 +595,11 @@ Steps:
 
    Start with `collect(fullImageRect, 0, out)`.
 4. **Score.** For each candidate `c`: `w = c.width / dpi`, `h = c.height / dpi`, `s = min(w, h)`, `l = max(w, h)`. Skip it unless `S_MIN <= s <= S_MAX`, `L_MIN <= l <= L_MAX`, and `RATIO_MIN <= l / s <= RATIO_MAX`. Score: `err = |s - 4| / 4 + |l - 6| / 6`. Choose the lowest `err`. If two scores are within 0.02, choose the larger area. If no candidate passes, return `null`.
-5. **Pad.** Grow the chosen rect by `round(PAD_IN * dpi)` px on every side, clamped to the image. Return it.
+5. **Crop at true size (changed in Phase 5).** Let the chosen ink box be `w × h` px. Its orientation is portrait if `h >= w`, giving a target of 4 × 6 in (else 6 × 4).
+   - If the ink box fits within the target plus `ACTUAL_SIZE_SLACK_IN = 0.1` in on both axes, return a window of `max(target, ink + 2 px)` on each axis (clamped to the page size), centered on the ink, and shifted (not shrunk) to stay on the page.
+   - Otherwise (a label bigger than 4 × 6), grow the ink box by `round(PAD_IN * dpi)` px on every side, clamped to the image.
+
+   Why: with plain padding, a carrier label that is exactly 4 × 6 got a 4.16 × 6.16 crop and printed at 96%. Barcodes are designed for true size. The eBay fixture now prints at "actual size".
 
 ### 6.6 `contentArea(img: GrayImage, dpi: number): PxRect`
 
@@ -923,7 +927,9 @@ Unchanged from the draft: the load and process sequence counters (the newest win
 
 ---
 
-## 10. Input handling — `src/renderer/hooks/useShippingInput.ts` (new)
+## 10. Input handling — `src/renderer/hooks/useShippingInput.tsx` (implemented in Phase 5)
+
+Implementation notes from Phase 5. The hook returns `{ actions, fileInput }`, and App provides `actions` through `ShippingInputContext` (`useShippingActions()` in the toolbar and view). It also exports `pickSupportedFile` and `loadPastedFile`, which `LabelEditor` uses. A paste whose target is an `<input>` or `<textarea>` loads an image if the clipboard has one, and otherwise is left to that field (no "clipboard has text" message).
 
 Mount once in `App.tsx`: `useShippingInput();`.
 
@@ -1054,6 +1060,8 @@ async function pasteFromSystemClipboard() {
 All new components use Tailwind classes consistent with `Toolbar.tsx`, `SettingsDialog.tsx`, and `ModalFrame.tsx`, including dark-mode variants. Every button has an accessible name. Every new interactive element must pass the existing axe and keyboard tests (`tests/ui/axe.spec.ts`, `tests/ui/focusVisible.spec.ts`), so reuse the focus-ring classes those components use.
 
 ### 11.1 `ContentModeSwitch.tsx` (new, rendered by `Toolbar` right after the profile tabs)
+
+**As built (Phase 5):** a `role="group"` of two `aria-pressed` buttons, the same pattern as the existing Portrait / Landscape control, instead of the radiogroup described below. Consistency with the existing toolbar won. Tests should check `aria-pressed`, and Tab reaches each button.
 
 - Render it only when `activeProfile === '4x6'`.
 - Markup: `<div role="radiogroup" aria-label="4 × 6 content">` with two `<button role="radio" aria-checked>` items: **Text** and **Shipping label**. Arrow Left/Right move between them (roving `tabIndex`), the same pattern the existing orientation control uses. Copy that control's implementation.
@@ -1351,7 +1359,7 @@ Cases (map to FS §7):
 3. **S03** in Text mode, focus the editor and paste a DataTransfer with both `text/plain` and an image → text inserted, still Text mode. Paste an image-only DataTransfer → Shipping label mode with a preview.
 4. **S04** paste a 900 × 600 snip → preview present. Check the rotation by reading the preview pixels: draw the preview `img` to a canvas in the page and assert a black marker drawn in the snip's top-left corner ends up in the top-right of the output.
 5. **S05** paste a 300 × 450 snip → low-resolution warning visible.
-6. **S06** `ebay-letter.pdf` via file input → dialog open; `data-crop` within ±0.03 of `0.049,0.038,0.489,0.560` (measured in Phase 2 from the pdf.js render of this fixture at `ANALYSIS_DPI`). Use this area → preview present; Print enabled.
+6. **S06** `ebay-letter.pdf` via file input → dialog open; `data-crop` within ±0.03 of `0.054,0.042,0.480,0.553` (re-measured in Phase 5 after the true-size crop change); after accepting, the caption ends in `actual size`. Use this area → preview present; Print enabled.
 7. **S07** `ups-letter.pdf` → `data-crop` within ±0.03 of `0.139,0.044,0.722,0.378` (measured in Phase 2), so not extending below the fold line at y = 396/792 = 0.5; after Use this area, the output is portrait (check the preview's natural size is 812 × 1218 and the rotation marker as in case 4).
 8. **S08** `label-4x6.pdf` and `label-6x4.pdf` → no dialog; preview present.
 9. **S09** `two-page.pdf` → dialog shows `Page 2 of 2` and `Found a label on page 2.`
@@ -1396,7 +1404,7 @@ Each phase ends with the checks in rule 0.2 and a local commit (rule 0.3).
 | **2. Analysis** | §6 and §6.8 tests; `fileTypes.ts` and its test. | Unit tests pass. |
 | **3. Sources** | §7 (pdfSource, imageSource, clipboard IPC, preload, mock). | Typecheck and lint pass. |
 | **4. Render + stores** | §8, §9. | Typecheck, lint, and unit tests pass. |
-| **5. UI** | §10, §11.1–11.4, §11.6–11.9. (Until Phase 6, a PDF load that needs the dialog may just accept the suggestion automatically; leave a `TODO(phase 6)` comment.) | Manual check in `npm run dev`: snip paste works, mode switch works, text mode unchanged. All existing UI tests pass. |
+| **5. UI** | §10, §11.1–11.4, §11.6–11.9. **As built:** `CropDialog.tsx` exists as a minimal dialog (status line, Cancel, Use this area, `TODO(phase 6)`). Auto-accepting the suggestion would have skipped the review the product owner asked for. Print is held off in Shipping label mode by a temporary `image-printing-pending` blocker (`TODO(phase 7)`). | Manual check in `npm run dev`: snip paste works, mode switch works, text mode unchanged. All existing UI tests pass. |
 | **6. Crop dialog** | §11.5; remove the Phase 5 TODO. | Manual check with each fixture. |
 | **7. Print path** | §12, §11.7 step 5. | Unit and print-document tests pass. |
 | **8. Tests** | §14.3, §14.5, plus anything still missing from §14. | Full suite passes: `typecheck`, `lint`, `test:unit`, `test:ui`, `build:app`, `test:electron`. |

@@ -1,11 +1,20 @@
 import React, { useEffect, useRef } from 'react';
 import type { Alignment, Orientation, PrinterProfile } from '@shared/contracts';
-import { useLabelStore } from '../stores/labelStore';
+import { selectEffectiveContentMode, useLabelStore } from '../stores/labelStore';
 import { usePreferencesStore } from '../stores/preferencesStore';
 import { useUIStore } from '../stores/uiStore';
 import { useFontStore } from '../stores/fontStore';
-import { usePrintBlockers } from '../hooks/usePrintBlockers';
+import { usePrintBlockers, type PrintBlocker } from '../hooks/usePrintBlockers';
+import { ContentModeSwitch } from './ContentModeSwitch';
+import { ShippingControls } from './ShippingControls';
 import { parseCopiesInput, parseFontSizeInput } from '@shared/inputValidation';
+
+/** Why Print is disabled, for blockers that need explaining in the button's tooltip. */
+const BLOCKER_MESSAGES: Partial<Record<PrintBlocker, string>> = {
+  'no-image': 'Paste or drop a shipping label first',
+  'image-processing': 'Preparing label…',
+  'image-printing-pending': 'Printing shipping labels is not available in this build yet', // TODO(phase 7)
+};
 
 export interface ToolbarProps {
   onPrintClick: () => void;
@@ -17,6 +26,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
   const updatePreferences = usePreferencesStore((s) => s.update);
   const updateProfilePreferences = usePreferencesStore((s) => s.updateProfile);
   const printBlockers = usePrintBlockers();
+  const isImageMode = useLabelStore(selectEffectiveContentMode) === 'image';
   const {
     openDialog,
     isPrintBusy,
@@ -130,10 +140,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
           })}
         </div>
 
+        <ContentModeSwitch />
+
         <div className="flex items-center gap-1.5 rounded-sm bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
           <span className="text-slate-600 dark:text-slate-400">Stock:</span> {isSmallProfile ? 'DYMO 30334 · 2¼ × 1¼ in' : '4 × 6 in'}
         </div>
 
+        {isImageMode ? <ShippingControls /> : (<>
         {/* Orientation Toggle */}
         {!isSmallProfile ? <div className="flex rounded-md border border-slate-200 bg-slate-50 p-0.5 dark:border-slate-700 dark:bg-slate-800">
           <button
@@ -305,6 +318,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
           ))}
         </div>
 
+        </>)}
+
         {/* Copies */}
         <div className="flex items-center gap-1">
           <label htmlFor="copiesInput" className="text-xs text-slate-500 dark:text-slate-400">
@@ -377,7 +392,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
               ? 'bg-slate-300 cursor-not-allowed dark:bg-slate-700 dark:text-slate-500'
               : 'bg-blue-600 hover:bg-blue-700'
           }`}
-          title={`Print ${profileLabel} label (Ctrl+P / Cmd+P)`}
+          title={
+            (isPrintDisabled && printBlockers.map((b) => BLOCKER_MESSAGES[b]).find(Boolean)) ||
+            `Print ${profileLabel} label (Ctrl+P / Cmd+P)`
+          }
         >
           {isPrintBusy ? (
             <>

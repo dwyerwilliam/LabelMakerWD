@@ -4,7 +4,12 @@ import { LabelEditor } from './components/LabelEditor';
 import { PrinterStatus } from './components/PrinterStatus';
 import { SettingsDialog } from './components/SettingsDialog';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { useLabelStore } from './stores/labelStore';
+import { selectEffectiveContentMode, useLabelStore } from './stores/labelStore';
+import { useShippingStore } from './stores/shippingStore';
+import { ShippingLabelView } from './components/ShippingLabelView';
+import { CropDialog } from './components/CropDialog';
+import { ShippingInputContext, useShippingInput } from './hooks/useShippingInput';
+import { IMAGE_LAYOUT_FINGERPRINT } from '@shared/shipping';
 import { useDeviceStore } from './stores/deviceStore';
 import { usePreferencesStore } from './stores/preferencesStore';
 import { useUIStore } from './stores/uiStore';
@@ -31,6 +36,19 @@ export const App: React.FC = () => {
     setNotice,
   } = useUIStore();
 
+  // Shipping labels: paste/drop listeners (registered once) and the actions the toolbar and view use.
+  const { actions: shippingActions, fileInput: shippingFileInput } = useShippingInput();
+  const effectiveMode = useLabelStore(selectEffectiveContentMode);
+  const shippingProcessed = useShippingStore((s) => s.processed);
+  const draftRevision = useLabelStore((s) => s.draft.revision);
+  const setLayoutFingerprint = useLabelStore((s) => s.setLayoutFingerprint);
+
+  // A shipping image has no text to measure: its layout is fixed, so every new revision of an
+  // image label gets the fixed image fingerprint (the text editor is not mounted in this mode).
+  useEffect(() => {
+    if (effectiveMode === 'image' && shippingProcessed) setLayoutFingerprint(IMAGE_LAYOUT_FINGERPRINT, draftRevision);
+  }, [effectiveMode, shippingProcessed, draftRevision, setLayoutFingerprint]);
+
   // Installed fonts: read at launch (and again from Settings → Refresh fonts).
   const fontStatus = useFontStore((s) => s.status);
   const fontList = useFontStore((s) => s.fonts);
@@ -55,7 +73,8 @@ export const App: React.FC = () => {
 
   // Main asks before closing a window that still holds label text, so it only
   // needs to know whether there is any (the text itself stays in the renderer).
-  const labelHasText = draft.text.trim().length > 0;
+  // A loaded shipping label counts too: it cannot be reopened either.
+  const labelHasText = draft.text.trim().length > 0 || shippingProcessed !== null;
   useEffect(() => {
     if (!window.api) return;
     void window.api.app.setLabelHasText(labelHasText).catch((err: unknown) => {
@@ -308,6 +327,7 @@ export const App: React.FC = () => {
   };
 
   return (
+    <ShippingInputContext.Provider value={shippingActions}>
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 font-sans text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">
       <Toolbar onPrintClick={handlePrintClick} />
 
@@ -321,8 +341,12 @@ export const App: React.FC = () => {
       )}
 
       <main className="flex flex-1 overflow-hidden">
-        <LabelEditor />
+        {effectiveMode === 'image' ? <ShippingLabelView /> : <LabelEditor />}
       </main>
+
+      {shippingFileInput}
+
+      <CropDialog />
 
       <PrinterStatus onRescan={handleRescan} />
 
@@ -403,7 +427,7 @@ export const App: React.FC = () => {
       <ConfirmDialog
         isOpen={activeDialog === 'confirm-reset'}
         title="Restore Factory Defaults?"
-        message="This will reset both label profiles, their printer selections, and formatting to initial defaults. Your current text will be preserved."
+        message="This will reset both label profiles, their printer selections, formatting, and shipping-label settings to initial defaults. Your current label will be preserved."
         confirmLabel="Restore Defaults"
         cancelLabel="Cancel"
         isDestructive={true}
@@ -411,5 +435,6 @@ export const App: React.FC = () => {
         onCancel={closeDialog}
       />
     </div>
+    </ShippingInputContext.Provider>
   );
 };

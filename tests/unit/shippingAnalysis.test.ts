@@ -231,3 +231,52 @@ describe('pixel helpers', () => {
     expect(fracRectToPx(frac, 500, 1000)).toEqual({ x: 25, y: 50, width: 100, height: 200 });
   });
 });
+
+describe('detectLabelRegion crop size', () => {
+  it('crops a label that fits within 4 × 6 at exactly 4 × 6, centered, so it prints at true size', () => {
+    const img = page(8.5, 11);
+    // Borderless label content, 3.5 × 5.5 in, at (1, 1); packing slip below.
+    fill(img, 1, 1, 3.5, 0.3);
+    fill(img, 1, 1.5, 1.2, 1.2);
+    fill(img, 1, 3.2, 3.5, 3.3);
+    textBlock(img, 0.5, 7.2, 7.5, 3.3, true);
+
+    const rect = detectLabelRegion(img, DPI)!;
+    expect([rect.width / DPI, rect.height / DPI]).toEqual([4, 6]);
+    expectRectNear(rect, [0.75, 0.75, 4, 6], 0.03);
+  });
+
+  it('keeps a bordered 4 × 6 label at (almost exactly) true size', () => {
+    const img = page(8.5, 11);
+    border(img, 0.5, 0.5, 4, 6);
+    labelContent(img, 0.5, 0.5, 4, 6);
+    textBlock(img, 0.5, 7.0, 7.5, 3.5, true);
+    const rect = detectLabelRegion(img, DPI)!;
+    expect(rect.width / DPI).toBeGreaterThanOrEqual(4);
+    expect(rect.width / DPI).toBeLessThanOrEqual(4.1); // scale ≥ 97%: "actual size"
+    expect(rect.height / DPI).toBeLessThanOrEqual(6.1);
+  });
+
+  it('shifts the 4 × 6 window to stay on the page instead of shrinking it', () => {
+    const img = page(8.5, 11);
+    fill(img, 0.05, 0.05, 3.6, 5.6); // a solid label close to the top-left corner
+    textBlock(img, 0.5, 7.0, 7.5, 3.5, true);
+    const rect = detectLabelRegion(img, DPI)!;
+    expect([rect.x, rect.y, rect.width / DPI, rect.height / DPI]).toEqual([0, 0, 4, 6]);
+  });
+
+  it('pads and scales down a label bigger than 4 × 6', () => {
+    const img = page(8.5, 11);
+    border(img, 0.5, 0.5, 4.4, 6.6);
+    labelContent(img, 0.5, 0.5, 4.4, 6.6);
+    expectRectNear(detectLabelRegion(img, DPI), [0.44, 0.44, 4.52, 6.72], 0.03);
+  });
+
+  it('uses a 6 × 4 window for a sideways label', () => {
+    const img = page(8.5, 11);
+    fill(img, 1.3, 1, 5.9, 3.9);
+    textBlock(img, 0.5, 6.0, 7.5, 4.0);
+    const rect = detectLabelRegion(img, DPI)!;
+    expect([rect.width / DPI, rect.height / DPI]).toEqual([6, 4]);
+  });
+});

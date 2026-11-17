@@ -1,9 +1,20 @@
 import { useDeviceStore } from '../stores/deviceStore';
-import { useLabelStore } from '../stores/labelStore';
+import { selectEffectiveContentMode, useLabelStore } from '../stores/labelStore';
+import { useShippingStore } from '../stores/shippingStore';
 import { useUIStore } from '../stores/uiStore';
 import { parseCopiesInput, parseFontSizeInput } from '@shared/inputValidation';
 
-export type PrintBlocker = 'no-text' | 'busy' | 'no-printer' | 'layout-pending' | 'invalid-font-size' | 'invalid-copies';
+export type PrintBlocker =
+  | 'no-text'
+  | 'busy'
+  | 'no-printer'
+  | 'layout-pending'
+  | 'invalid-font-size'
+  | 'invalid-copies'
+  | 'no-image'
+  | 'image-processing'
+  // TODO(phase 7): remove once shipping-label images can be sent through the print path.
+  | 'image-printing-pending';
 
 /**
  * Everything that must be fixed before a label can be sent. The toolbar button
@@ -12,6 +23,7 @@ export type PrintBlocker = 'no-text' | 'busy' | 'no-printer' | 'layout-pending' 
  */
 export function usePrintBlockers(): PrintBlocker[] {
   const activeProfile = useLabelStore((s) => s.activeProfile);
+  const mode = useLabelStore(selectEffectiveContentMode);
   const text = useLabelStore((s) => s.draft.text);
   const draftRevision = useLabelStore((s) => s.draft.revision);
   const layoutRevision = useLabelStore((s) => s.layoutFingerprintRevision);
@@ -20,13 +32,21 @@ export function usePrintBlockers(): PrintBlocker[] {
   const isBusy = useUIStore((s) => s.isPrintBusy);
   const fontSizeDraft = useUIStore((s) => s.fontSizeDraft);
   const copiesDraft = useUIStore((s) => s.copiesDraft);
+  const hasImage = useShippingStore((s) => s.processed !== null);
+  const shippingBusy = useShippingStore((s) => s.busy !== null);
 
   const blockers: PrintBlocker[] = [];
-  if (text.trim().length === 0) blockers.push('no-text');
+  if (mode === 'image') {
+    if (!hasImage) blockers.push('no-image');
+    if (shippingBusy) blockers.push('image-processing');
+    blockers.push('image-printing-pending'); // TODO(phase 7)
+  } else {
+    if (text.trim().length === 0) blockers.push('no-text');
+    if (!parseFontSizeInput(fontSizeDraft).ok) blockers.push('invalid-font-size');
+  }
   if (isBusy) blockers.push('busy');
   if (!hasQueue) blockers.push('no-printer');
   if (!hasLayout || layoutRevision !== draftRevision) blockers.push('layout-pending');
-  if (!parseFontSizeInput(fontSizeDraft).ok) blockers.push('invalid-font-size');
   if (!parseCopiesInput(copiesDraft).ok) blockers.push('invalid-copies');
   return blockers;
 }
