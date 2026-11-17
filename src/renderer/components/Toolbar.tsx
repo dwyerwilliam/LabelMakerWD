@@ -13,7 +13,6 @@ import { parseCopiesInput, parseFontSizeInput } from '@shared/inputValidation';
 const BLOCKER_MESSAGES: Partial<Record<PrintBlocker, string>> = {
   'no-image': 'Paste or drop a shipping label first',
   'image-processing': 'Preparing label…',
-  'image-printing-pending': 'Printing shipping labels is not available in this build yet', // TODO(phase 7)
 };
 
 export interface ToolbarProps {

@@ -135,3 +135,11 @@
   pointer-events: none;
   font-style: italic;
 }
+
+/* A shipping label: the 812 × 1218 black-and-white image filling the 4 × 6 page, dots kept sharp. */
+.shipping-label-image {
+  display: block;
+  width: 384px;
+  height: 576px;
+  image-rendering: pixelated;
+}

@@ -12,9 +12,7 @@ export type PrintBlocker =
   | 'invalid-font-size'
   | 'invalid-copies'
   | 'no-image'
-  | 'image-processing'
-  // TODO(phase 7): remove once shipping-label images can be sent through the print path.
-  | 'image-printing-pending';
+  | 'image-processing';
 
 /**
  * Everything that must be fixed before a label can be sent. The toolbar button
@@ -39,7 +37,6 @@ export function usePrintBlockers(): PrintBlocker[] {
   if (mode === 'image') {
     if (!hasImage) blockers.push('no-image');
     if (shippingBusy) blockers.push('image-processing');
-    blockers.push('image-printing-pending'); // TODO(phase 7)
   } else {
     if (text.trim().length === 0) blockers.push('no-text');
     if (!parseFontSizeInput(fontSizeDraft).ok) blockers.push('invalid-font-size');

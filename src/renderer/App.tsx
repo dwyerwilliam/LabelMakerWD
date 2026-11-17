@@ -9,7 +9,7 @@ import { useShippingStore } from './stores/shippingStore';
 import { ShippingLabelView } from './components/ShippingLabelView';
 import { CropDialog } from './components/CropDialog';
 import { ShippingInputContext, useShippingInput } from './hooks/useShippingInput';
-import { IMAGE_LAYOUT_FINGERPRINT } from '@shared/shipping';
+import { IMAGE_LAYOUT_FINGERPRINT, SHIPPING_HEIGHT_PX, SHIPPING_WIDTH_PX } from '@shared/shipping';
 import { useDeviceStore } from './stores/deviceStore';
 import { usePreferencesStore } from './stores/preferencesStore';
 import { useUIStore } from './stores/uiStore';
@@ -231,19 +231,39 @@ export const App: React.FC = () => {
       return;
     }
 
-    const snapshot: PrintSnapshot = {
-      requestId: crypto.randomUUID(),
-      draftRevision: draft.revision,
-      contentKind: 'text',
-      text: draft.text,
-      profile: draft.profile,
-      orientation: draft.orientation,
-      resolvedFontFamily: draft.resolvedFontFamily,
-      fontSizePt: draft.fontSizePt,
-      alignment: draft.alignment,
-      copies: draft.copies,
-      expectedLayout: layoutFingerprint,
-    };
+    // A shipping label prints its 812 × 1218 image on one portrait 4 × 6 page; the font fields
+    // are carried only because the snapshot shape requires them.
+    const shipping = useShippingStore.getState().processed;
+    const isImage = selectEffectiveContentMode(useLabelStore.getState()) === 'image';
+    if (isImage && !shipping) return;
+    const snapshot: PrintSnapshot = isImage && shipping
+      ? {
+          requestId: crypto.randomUUID(),
+          draftRevision: draft.revision,
+          contentKind: 'image',
+          text: '',
+          profile: '4x6',
+          orientation: 'portrait',
+          resolvedFontFamily: draft.resolvedFontFamily,
+          fontSizePt: draft.fontSizePt,
+          alignment: draft.alignment,
+          copies: draft.copies,
+          expectedLayout: IMAGE_LAYOUT_FINGERPRINT,
+          image: { pngBase64: shipping.pngBase64, widthPx: SHIPPING_WIDTH_PX, heightPx: SHIPPING_HEIGHT_PX },
+        }
+      : {
+          requestId: crypto.randomUUID(),
+          draftRevision: draft.revision,
+          contentKind: 'text',
+          text: draft.text,
+          profile: draft.profile,
+          orientation: draft.orientation,
+          resolvedFontFamily: draft.resolvedFontFamily,
+          fontSizePt: draft.fontSizePt,
+          alignment: draft.alignment,
+          copies: draft.copies,
+          expectedLayout: layoutFingerprint,
+        };
 
     try {
       setPrintBusy(true, 'Preparing label…');

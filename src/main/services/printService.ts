@@ -10,6 +10,7 @@ import type {
   PrinterProfile,
 } from '@shared/contracts';
 import { SP310_OUTPUT_HEIGHT_IN, SP310_OUTPUT_WIDTH_IN } from '@shared/defaults';
+import { readPngDimensions, SHIPPING_HEIGHT_PX, SHIPPING_WIDTH_PX } from '@shared/shipping';
 import { compareFingerprints } from '@renderer/label/layout';
 import { IPC_CHANNELS } from '@shared/channels';
 import { err, ok, type Result } from '@shared/errors';
@@ -122,6 +123,15 @@ export class PrintService {
   async prepare(snapshot: PrintSnapshot): Promise<PrintPrepareResult> {
     if (this.isSubmitting || this.isPreparing) {
       throw new Error('A print job is currently in progress. Please wait.');
+    }
+
+    // A shipping label is an image that must be exactly one 4 × 6 label at 203 dpi. Only its
+    // PNG header is read here; the image itself (names, addresses) is never parsed or logged.
+    if (snapshot.contentKind === 'image') {
+      const dims = snapshot.image ? readPngDimensions(Buffer.from(snapshot.image.pngBase64, 'base64')) : null;
+      if (!dims || dims.width !== SHIPPING_WIDTH_PX || dims.height !== SHIPPING_HEIGHT_PX) {
+        throw new Error('The shipping label image is not a valid 4 × 6 label image.');
+      }
     }
 
     const selectedQueue = this.printerService.getSelectedQueue(snapshot.profile);
