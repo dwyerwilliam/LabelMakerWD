@@ -882,95 +882,44 @@ bumpRevision: () => {
 - Add `'shipping-crop'` to `DialogType`.
 - Add `shippingMessage: { kind: 'error' | 'info'; text: string } | null` and `setShippingMessage(m)`. This is the inline message in the shipping view (FS §4.2 error state, and the "clipboard has text" info).
 
-### 9.3 `shippingStore.ts` (new) — `src/renderer/stores/shippingStore.ts`
+### 9.3 `shippingStore.ts` — `src/renderer/stores/shippingStore.ts` (implemented in Phase 4)
+
+**The file is the reference.** Read it before Phases 5–6. Its behavior is pinned by `tests/ui/shippingPipeline.spec.ts`. Public API:
 
 ```ts
-export type ShippingBusy = null | 'reading' | 'detecting' | 'processing';
-
 export interface CropDialogState {
-  /** The page and crop the dialog starts with. */
-  initial: CropChoice;
-  /** Status line text (FS §4.6), or null. */
-  status: string | null;
-  /** True when Cancel should return to the empty state (no image was loaded before). */
-  cancelClears: boolean;
+  source: LoadedSource;     // a newly loaded PDF, or the current source (Adjust crop)
+  isNewSource: boolean;     // true: not the current label yet; Cancel releases it
+  initial: CropChoice;      // page, crop, rotation the dialog starts with
+  status: string | null;    // FS §4.6 status line
 }
-
 export interface ShippingState {
   source: LoadedSource | null;
-  choice: CropChoice | null;              // the accepted crop for `processed`
+  choice: CropChoice | null;
   processed: ProcessedShippingImage | null;
-  busy: ShippingBusy;
+  busy: null | 'reading' | 'detecting' | 'processing';
   cropDialog: CropDialogState | null;
-
-  loadBlob: (blob: Blob, fileName: string | null, origin: 'clipboard' | 'file') => Promise<void>;
-  acceptCrop: (choice: CropChoice) => Promise<void>;
-  cancelCrop: () => void;
-  openAdjustCrop: () => void;
-  rotate: (delta: 90 | -90) => Promise<void>;
-  reprocess: () => Promise<void>;         // after a darkness change
-  clear: () => void;
+  loadBlob(blob, fileName: string | null, origin: 'clipboard' | 'file'): Promise<void>;
+  acceptCrop(choice: CropChoice): Promise<void>;
+  cancelCrop(): void;
+  openAdjustCrop(): void;
+  rotate(delta: 90 | -90): Promise<void>;
+  reprocess(): Promise<void>;   // after a darkness change
+  clear(): void;
 }
+export const MESSAGES;          // every user-facing string the store produces (FS §4.6, §6)
+export function suggestCropForPdf(pdf, pageIndex, { useRemembered, scanAhead }): Promise<{ choice, status }>;
+export function findRememberedCrop(size): RememberedCrop | null;
 ```
 
-**Concurrency rule.** A module-level `let loadSeq = 0;`. Each `loadBlob` does `const seq = ++loadSeq;`. After every `await`, `if (seq !== loadSeq) { /* release anything just created */ return; }`. `acceptCrop`, `rotate`, and `reprocess` use a separate `processSeq` the same way, so only the newest result is committed.
+**Changes from the original draft of this section (made in Phase 4), and why:**
 
-**Replacing resources.** Whenever `source` is replaced or cleared: PDF → `await source.pdf.destroy()`; image → `source.bitmap.close()`. Whenever `processed` is replaced or cleared: `URL.revokeObjectURL(old.objectUrl)`. Never release the source that the crop dialog is currently showing; replace it only after the dialog closes or the new load wins.
+1. **The crop dialog holds its own pending source.** `source`, `choice` and `processed` change together, and only after a new image has rendered successfully. A PDF waiting in the dialog lives in `cropDialog.source` until it is accepted. This replaces the draft's `previous` variable and `cancelClears` flag: Cancel only releases the pending source, and the old label is never touched.
+2. **The mode switches only after a file was read successfully.** The store calls `ensureShippingMode()` (4 × 6 tab, Shipping label mode, and the notice "Shipping labels print on the 4 × 6 printer." when it changed tabs) after the image decodes or the PDF parses. This is FS §6's "nothing changes" rule for failed loads. **The input hook (§10) must therefore not switch modes itself.** It just calls `loadBlob`.
+3. **Errors go where they are visible.** In Shipping label mode, they go to `uiStore.shippingMessage` (shown by the shipping view). In Text mode, where that view isn't mounted, they go to the notice bar (`uiStore.setNotice`).
+4. **Suggestions for dialog page changes and Auto-detect** use `suggestCropForPdf`. On a page change, call it with `{ useRemembered: true, scanAhead: false }`; for Auto-detect, `{ useRemembered: false, scanAhead: false }`.
 
-**`loadBlob(blob, fileName, origin)`** — implement exactly:
-
-1. `const seq = ++loadSeq`. Clear `uiStore.shippingMessage`.
-2. Name for messages: `name = fileName ?? 'The clipboard image'`.
-3. If `blob.size > MAX_SOURCE_FILE_BYTES` → error message `` `${name} is too large (over 25 MB).` `` and return.
-4. `type = classifyFile(fileName ?? '', blob.type)`. For a clipboard blob with an `image/*` MIME, treat it as `'image'`. If `null` → the unsupported-file message and return.
-5. Make sure the 4 × 6 tab is active in image mode (the input hook already did this; repeat it here defensively): if `labelStore.activeProfile !== '4x6'`, call `setActiveProfile('4x6')` and `preferencesStore.update({ activeProfile: '4x6' })`; if `contentMode !== 'image'`, call `setContentMode('image')` and `preferencesStore.updateShipping({ mode4x6: 'image' })`.
-6. `set({ busy: 'reading' })`.
-7. **Image path:** `loadImage(blob)`; map failure to `` `${fileName} isn't a readable image.` `` or, from the clipboard, `The clipboard image couldn't be read.`. Then:
-   - `gray = toGray(...)` from a canvas the size of the bitmap (draw the bitmap, `getImageData`);
-   - `r = peelUniformBorders(gray)`; `crop = pxRectToFrac(r, w, h)`;
-   - `rotation = r.width > 1.1 * r.height ? 90 : 0`;
-   - commit the new source (releasing the old one), then `await process({ pageIndex: 0, crop, rotation })` (below). **No dialog.**
-8. **PDF path:** `bytes = new Uint8Array(await blob.arrayBuffer())`; `pdf = await loadPdf(bytes)`; map `PdfLoadError` reasons to the FS §6 messages. Then:
-   - `size1 = await pdf.pageSizePt(0)`.
-   - **4 × 6 page check:** if `|min(w,h)/72 - 4| <= 0.15` and `|max(w,h)/72 - 6| <= 0.15`, then crop = whole page, rotation = `w > h ? 90 : 0`; commit the source and `process(...)` with **no dialog**.
-   - Else find a **suggestion** (`set({ busy: 'detecting' })`):
-     1. `remembered = findRememberedCrop(size1)`. If found → choice `{ pageIndex: 0, crop: remembered.rect, rotation: remembered.rotation }`, status `Using the area you chose last time for this page size.`
-     2. Else, for `i` in `0 … min(pageCount, 5) - 1`: `canvas = await pdf.renderPage(i, ANALYSIS_DPI)` → `gray` → `detectLabelRegion(gray, ANALYSIS_DPI)`. On the first non-null result: crop = `pxRectToFrac(...)`, `rotation = rect.width > 1.1 * rect.height ? 90 : 0`, status = `i === 0 ? null : 'Found a label on page ${i + 1}.'`; stop.
-     3. Else: page 0, crop = `contentArea(...)` of page 0, rotation 0, status `Couldn't find a 4 × 6 label on this page. Drag the box around the label.`
-   - Commit the source. Set `cropDialog = { initial, status, cancelClears: processed === null }`, `busy: null`, and `uiStore.openDialog('shipping-crop')`.
-9. On any thrown error not mapped above: generic `` `${name} couldn't be opened.` ``. Always end with `busy: null` (if `seq` is still current).
-
-**`findRememberedCrop(size)`** reads `usePreferencesStore.getState().preferences.shippingLabel.rememberedCrops` and returns the first entry with `|pageWidthPt - size.width| <= 2 && |pageHeightPt - size.height| <= 2`.
-
-**`process(choice)`** (private):
-
-1. `const seq = ++processSeq; set({ busy: 'processing' })`.
-2. `result = await renderShippingLabel(source, choice, darkness)`, where `darkness = preferences.shippingLabel.darkness`.
-3. If `seq` is stale: revoke `result.objectUrl` and return.
-4. Revoke the old `processed.objectUrl`. `set({ processed: result, choice, busy: null })`. Call `useLabelStore.getState().bumpRevision()`.
-5. If `result.blank` → `uiStore.setShippingMessage({ kind: 'error', text: 'This area is blank. Choose the part of the page with the label.' })`.
-6. On error → `uiStore.setShippingMessage({ kind: 'error', text: 'The label couldn't be prepared. Try again.' })` and `busy: null`. Keep the old `processed`.
-
-**`acceptCrop(choice)`**: `uiStore.closeDialog()`, `set({ cropDialog: null })`, then `await process(choice)`. If `source.kind === 'pdf'`, also save the remembered crop:
-
-```ts
-const size = await source.pdf.pageSizePt(choice.pageIndex);
-const list = prefs.shippingLabel.rememberedCrops.filter(
-  (c) => !(Math.abs(c.pageWidthPt - size.width) <= 2 && Math.abs(c.pageHeightPt - size.height) <= 2)
-);
-list.unshift({ pageWidthPt: size.width, pageHeightPt: size.height, rect: { ...choice.crop }, rotation: choice.rotation });
-usePreferencesStore.getState().updateShipping({ rememberedCrops: list.slice(0, MAX_REMEMBERED_CROPS) });
-```
-
-**`cancelCrop()`**: close the dialog. If `cropDialog.cancelClears`, call `clear()`. Otherwise, if the dialog was opened by a *new* load, restore the previous source. To make that possible, `loadBlob` keeps the previous `{ source, choice, processed }` in a module-level `previous` variable when it opens the dialog. On cancel, swap it back and destroy the new source. On accept, destroy `previous.source` and revoke `previous.processed.objectUrl`.
-
-**`openAdjustCrop()`**: with `source` and `choice` set → `cropDialog = { initial: choice, status: null, cancelClears: false }` and `openDialog('shipping-crop')`. Here `previous` is not used; cancel simply closes.
-
-**`rotate(delta)`**: `process({ ...choice, rotation: addRotation(choice.rotation, delta) })`.
-
-**`reprocess()`**: `process(choice)` when `source` and `choice` exist.
-
-**`clear()`**: `++loadSeq; ++processSeq;` release the source and `processed`, set everything to null/idle, `bumpRevision()`, and clear `shippingMessage`.
+Unchanged from the draft: the load and process sequence counters (the newest wins); the 4 × 6-page shortcut; the remembered-crop lookup (±2 pt) and save on accept (PDFs only, most recent first, max 8); the blank-label message; `bumpRevision()` on every commit and on `clear()`; and releasing PDFs, bitmaps and object URLs whenever they are replaced.
 
 ---
 
@@ -1028,14 +977,13 @@ onPaste(e):
       return   // LabelEditor's own onPaste handles it (see 10.4)
   if file:
       e.preventDefault()
-      void switchToShipping(labelState.activeProfile !== '4x6')
       void shippingStore.loadBlob(file, isImage(file) ? null : file.name, isImage(file) ? 'clipboard' : 'file')
       return
   if effective === 'image' and text.trim() !== '':
       uiStore.setShippingMessage({ kind: 'info', text: 'The clipboard has text, not an image. Switch to Text to paste text.' })
 ```
 
-`switchToShipping(showNotice)` sets the 4 × 6 profile and image mode (as in §9.3 step 5). When `showNotice` is true it calls `uiStore.setNotice('Shipping labels print on the 4 × 6 printer.')`.
+The hook does **not** switch tabs or modes: `loadBlob` does that once the file has been read (§9.3, change 2).
 
 ### 10.4 Paste inside the text editor — `LabelEditor.tsx`
 
@@ -1048,7 +996,7 @@ if (plain === '' && useLabelStore.getState().activeProfile === '4x6') {
   if (file) {
     e.preventDefault();
     // hand off to the shipping flow; the editor unmounts when the mode changes
-    void loadShippingFromPaste(file); // exported from useShippingInput.ts; same logic as 10.3's file branch
+    void useShippingStore.getState().loadBlob(file, null, 'clipboard'); // loadBlob switches the mode; the editor then unmounts
     return;
   }
 }
@@ -1073,7 +1021,6 @@ drop(e):
      uiStore.setShippingMessage({ kind:'error', text: `Label Maker can't open ${unsupported?.name ?? 'that file'}. Use a PDF or an image (PNG, JPEG, GIF, BMP, WebP).` })
      return
   if total > 1: uiStore.setNotice(`Only one file at a time. Using ${file.name}.`)
-  void switchToShipping(activeProfile !== '4x6' || contentMode !== 'image')
   void shippingStore.loadBlob(file, file.name, 'file')
 ```
 
