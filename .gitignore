@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+dist-electron/
+out/
+releases/
+build/
+*.exe
+!native/windows/*.cpp
+!native/macos/*.swift
+
+# Logs and test outputs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+test-results/
+playwright-report/
+coverage/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# Local env
+.env
+.env.local

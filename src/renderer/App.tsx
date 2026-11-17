@@ -1,0 +1,259 @@
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { Toolbar } from './components/Toolbar';
+import { LabelEditor } from './components/LabelEditor';
+import { PrinterStatus } from './components/PrinterStatus';
+import { SettingsDialog } from './components/SettingsDialog';
+import { ConfirmDialog } from './components/ConfirmDialog';
+import { useLabelStore } from './stores/labelStore';
+import { useDeviceStore } from './stores/deviceStore';
+import { usePreferencesStore } from './stores/preferencesStore';
+import { useUIStore } from './stores/uiStore';
+import type { PrintPrepareResult, PrintSnapshot } from '@shared/contracts';
+
+export const App: React.FC = () => {
+  const { draft, layoutFingerprint, setOrientation, setFontFamily, setFontSize, setAlignment } =
+    useLabelStore();
+  const { setQueues, setScanning, setError, selectedQueue } = useDeviceStore();
+  const { preferences, hydrate, reset: resetPrefs } = usePreferencesStore();
+  const {
+    activeDialog,
+    openDialog,
+    closeDialog,
+    isPrintBusy,
+    setPrintBusy,
+  } = useUIStore();
+
+  const [pendingPrepareResult, setPendingPrepareResult] = useState<PrintPrepareResult | null>(null);
+  const pendingCloseResolve = useRef<((value: boolean) => void) | null>(null);
+
+  // Scan printers
+  const handleScanPrinters = useCallback(async () => {
+    if (!window.api) return;
+    try {
+      setScanning(true);
+      setError(null);
+      const queues = await window.api.printers.scan();
+      setQueues(queues);
+    } catch (err: any) {
+      console.error('Scan error:', err);
+      setError(err?.message || 'Failed scanning printers');
+    } finally {
+      setScanning(false);
+    }
+  }, [setError, setQueues, setScanning]);
+
+  // Initial load: hydrate preferences and scan queues
+  useEffect(() => {
+    async function init() {
+      if (!window.api) return;
+
+      try {
+        const saved = await window.api.preferences.get();
+        if (saved) {
+          hydrate(saved);
+          setOrientation(saved.orientation);
+          setFontFamily(saved.fontFamily);
+          setFontSize(saved.fontSizePt);
+          setAlignment(saved.alignment);
+        }
+      } catch (err) {
+        console.warn('Failed hydrating preferences:', err);
+      }
+
+      await handleScanPrinters();
+    }
+
+    init();
+  }, [handleScanPrinters, hydrate, setAlignment, setFontFamily, setFontSize, setOrientation]);
+
+  // Subscribe to print state events from main
+  useEffect(() => {
+    if (!window.api) return;
+
+    const unsubscribe = window.api.print.onStateEvent((evt) => {
+      if (evt.state === 'submitting') {
+        setPrintBusy(true, 'Sending to printer…');
+      } else if (evt.state === 'submitted') {
+        setPrintBusy(false, evt.detail || 'Sent to printer queue');
+        setTimeout(() => setPrintBusy(false, ''), 5000);
+      } else if (evt.state === 'failed') {
+        setPrintBusy(false, `Print failed: ${evt.detail || 'Unknown error'}`);
+        setTimeout(() => setPrintBusy(false, ''), 6000);
+      }
+    });
+
+    return unsubscribe;
+  }, [setPrintBusy]);
+
+  // Handle print flow
+  const executeConfirmedPrint = useCallback(async (token: string, requestId: string) => {
+    if (!window.api) return;
+    try {
+      setPrintBusy(true, 'Submitting…');
+      const result = await window.api.print.confirm(token, requestId);
+      if (!result.ok) {
+        setPrintBusy(false, `Print error: ${result.error.message}`);
+      }
+    } catch (err: any) {
+      setPrintBusy(false, `Print failed: ${err?.message || 'Unknown'}`);
+    }
+  }, [setPrintBusy]);
+
+  const handlePrintClick = useCallback(async () => {
+    if (!window.api || !layoutFingerprint || isPrintBusy) return;
+    if (draft.text.trim().length === 0) return;
+
+    const snapshot: PrintSnapshot = {
+      requestId: crypto.randomUUID(),
+      draftRevision: draft.revision,
+      text: draft.text,
+      orientation: draft.orientation,
+      resolvedFontFamily: draft.resolvedFontFamily,
+      fontSizePt: draft.fontSizePt,
+      alignment: draft.alignment,
+      copies: draft.copies,
+      expectedLayout: layoutFingerprint,
+    };
+
+    try {
+      setPrintBusy(true, 'Preparing label…');
+      const prepareRes = await window.api.print.prepare(snapshot);
+      setPendingPrepareResult(prepareRes);
+
+      if (prepareRes.requiresConfirmation) {
+        setPrintBusy(false);
+        if (prepareRes.confirmationReasons.includes('overflow_clipped')) {
+          openDialog('confirm-clip');
+          return;
+        }
+        if (prepareRes.confirmationReasons.includes('printer_offline')) {
+          openDialog('confirm-offline');
+          return;
+        }
+      }
+
+      // No confirmation needed; submit immediately
+      if (prepareRes.token) {
+        await executeConfirmedPrint(prepareRes.token, snapshot.requestId);
+      }
+    } catch (err: any) {
+      setPrintBusy(false, `Preparation error: ${err?.message || 'Unknown'}`);
+    }
+  }, [draft, executeConfirmedPrint, isPrintBusy, layoutFingerprint, openDialog, setPrintBusy]);
+
+  // Keyboard shortcut Ctrl+P / Cmd+P
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+      if (mod && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        handlePrintClick();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [handlePrintClick]);
+
+  const handleConfirmClipped = async () => {
+    closeDialog();
+    if (pendingPrepareResult?.token) {
+      await executeConfirmedPrint(pendingPrepareResult.token, pendingPrepareResult.snapshot.requestId);
+    }
+  };
+
+  const handleCancelPrepare = async () => {
+    closeDialog();
+    if (pendingPrepareResult?.token && window.api) {
+      await window.api.print.cancel(pendingPrepareResult.token);
+    }
+    setPendingPrepareResult(null);
+  };
+
+  const handleRestoreDefaultsConfirm = async () => {
+    closeDialog();
+    if (!window.api) return;
+    try {
+      const reset = await window.api.preferences.reset();
+      resetPrefs();
+      setOrientation(reset.orientation);
+      setFontFamily(reset.fontFamily);
+      setFontSize(reset.fontSizePt);
+      setAlignment(reset.alignment);
+      await handleScanPrinters();
+    } catch (err) {
+      console.error('Failed restoring defaults:', err);
+    }
+  };
+
+  return (
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 font-sans text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">
+      <Toolbar onPrintClick={handlePrintClick} />
+
+      <main className="flex flex-1 overflow-hidden">
+        <LabelEditor />
+      </main>
+
+      <PrinterStatus onRescan={handleScanPrinters} />
+
+      {/* Settings Dialog */}
+      <SettingsDialog
+        onRefreshPrinters={handleScanPrinters}
+        onRestoreDefaults={() => openDialog('confirm-reset')}
+      />
+
+      {/* Overflow Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={activeDialog === 'confirm-clip'}
+        title="Print Clipped Label?"
+        message="The text exceeds the 4 × 6 safe area and will be clipped to fit on a single label. Would you like to proceed with printing the visible portion?"
+        confirmLabel="Print Clipped Label"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmClipped}
+        onCancel={handleCancelPrepare}
+      />
+
+      {/* Offline Printer Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={activeDialog === 'confirm-offline'}
+        title="Printer Offline"
+        message={`The printer "${selectedQueue?.displayName || 'SP410'}" is currently reported offline or unavailable by the operating system. Send to queue anyway? It may print when reconnected.`}
+        confirmLabel="Send to Queue"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmClipped}
+        onCancel={handleCancelPrepare}
+      />
+
+      {/* Discard Label and Close Dialog */}
+      <ConfirmDialog
+        isOpen={activeDialog === 'confirm-close'}
+        title="Discard Label and Close?"
+        message="You have unsaved text on your label. Label Maker does not save label contents between launches. Are you sure you want to discard your label and close?"
+        confirmLabel="Discard and Close"
+        cancelLabel="Keep Editing"
+        isDestructive={true}
+        onConfirm={() => {
+          closeDialog();
+          pendingCloseResolve.current?.(true);
+        }}
+        onCancel={() => {
+          closeDialog();
+          pendingCloseResolve.current?.(false);
+        }}
+      />
+
+      {/* Restore Defaults Dialog */}
+      <ConfirmDialog
+        isOpen={activeDialog === 'confirm-reset'}
+        title="Restore Factory Defaults?"
+        message="This will reset your preferred orientation, font family, font size, alignment, and printer selection to initial defaults. Your current text will be preserved."
+        confirmLabel="Restore Defaults"
+        cancelLabel="Cancel"
+        isDestructive={true}
+        onConfirm={handleRestoreDefaultsConfirm}
+        onCancel={closeDialog}
+      />
+    </div>
+  );
+};

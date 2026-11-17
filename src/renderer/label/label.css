@@ -1,0 +1,118 @@
+/* Isolated plain CSS for Label Maker geometry and printing */
+
+@page {
+  size: 4in 6in;
+  margin: 0;
+}
+
+@media print {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 384px !important;
+    height: 576px !important;
+    background: #ffffff !important;
+    overflow: hidden !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .label-safe-area {
+    border: none !important;
+  }
+}
+
+.label-sheet-portrait {
+  width: 384px;
+  height: 576px;
+  position: relative;
+  background-color: #ffffff;
+  box-sizing: border-box;
+}
+
+.label-sheet-landscape {
+  width: 384px;
+  height: 576px;
+  position: relative;
+  background-color: #ffffff;
+  box-sizing: border-box;
+}
+
+/* Landscape content is 576x384 logical, rotated 90deg clockwise into 384x576 physical */
+.label-landscape-rotation-wrapper {
+  width: 576px;
+  height: 384px;
+  transform-origin: 0 0;
+  transform: translateX(384px) rotate(90deg);
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.label-safe-area {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  box-sizing: border-box;
+  overflow: hidden; /* Clips text outside safe area */
+  display: flex;
+  flex-direction: column;
+}
+
+.label-safe-area-portrait {
+  width: 360px;
+  height: 552px;
+}
+
+.label-safe-area-landscape {
+  width: 552px;
+  height: 360px;
+}
+
+/* Preview guide lines (only in editing/preview mode) */
+.preview-mode .label-safe-area {
+  outline: 1px dashed #cbd5e1;
+}
+
+.preview-mode .label-safe-area.has-overflow {
+  outline: 2px solid #ef4444;
+}
+
+.label-text-container {
+  width: 100%;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  color: #000000;
+  box-sizing: border-box;
+}
+
+.label-text-container:focus {
+  outline: none;
+}
+
+.align-left {
+  text-align: left;
+}
+
+.align-center {
+  text-align: center;
+}
+
+.align-right {
+  text-align: right;
+}
+
+/* Empty placeholder */
+.label-placeholder::before {
+  content: "Type your label";
+  color: #94a3b8;
+  pointer-events: none;
+  font-style: italic;
+}
