@@ -1,7 +1,8 @@
 import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
-import type { PreferencesUpdate, PreferencesV2 } from '@shared/contracts';
+import type { PreferencesUpdate, PreferencesV2, SettingsProblem } from '@shared/contracts';
+import { repairPreferences } from '@shared/preferencesRepair';
 import { createDefaultPreferences } from '@shared/defaults';
 import { legacyPreferencesV1Schema, preferencesV2Schema } from '@shared/schemas';
 
@@ -20,11 +21,23 @@ export class SettingsService {
   private filePath: string;
   private currentPreferences: PreferencesV2 = createDefaultPreferences();
   private writePromise: Promise<void> = Promise.resolve();
+  private freshInstall = false;
+  private loadProblem: SettingsProblem | null = null;
 
   /** `filePath` is injectable for tests; the app always uses its per-user data directory. */
   constructor(filePath: string = path.join(app.getPath('userData'), 'settings.json')) {
     this.filePath = filePath;
     this.load();
+  }
+
+  /** True when this launch started without any settings file (first run, or settings were deleted). */
+  isFreshInstall(): boolean {
+    return this.freshInstall;
+  }
+
+  /** Set when the settings file could not be used as it was; shown to the user once at launch. */
+  getLoadProblem(): SettingsProblem | null {
+    return this.loadProblem;
   }
 
   getPreferences(): PreferencesV2 {
@@ -34,6 +47,7 @@ export class SettingsService {
   load(): PreferencesV2 {
     try {
       if (!fs.existsSync(this.filePath)) {
+        this.freshInstall = true;
         this.currentPreferences = createDefaultPreferences();
         return this.getPreferences();
       }
@@ -71,31 +85,47 @@ export class SettingsService {
         return this.getPreferences();
       }
 
-      console.warn('Invalid settings schema, backing up corrupt file and loading defaults:', parsedV2.error);
-      this.backupCorrupt(raw);
+      // A version 2 file with some invalid values keeps everything that is valid.
+      const repair = repairPreferences(json);
+      if (repair) {
+        console.warn('Some settings were invalid and were reset to defaults:', repair.repaired);
+        this.currentPreferences = repair.preferences;
+        this.loadProblem = { kind: 'repaired', fields: repair.repaired, backupFile: this.backupCorrupt(raw) };
+        return this.getPreferences();
+      }
+
+      const version = (json as { schemaVersion?: unknown } | null)?.schemaVersion;
+      const newer = typeof version === 'number' && version > 2;
+      console.warn(`Settings file is ${newer ? 'from a newer version' : 'invalid'}, saving a copy and loading defaults.`);
+      this.loadProblem = { kind: newer ? 'newer' : 'corrupt', backupFile: this.backupCorrupt(raw) };
       this.currentPreferences = createDefaultPreferences();
     } catch (err) {
       console.error('Error reading settings file, restoring defaults:', err);
+      let backupFile: string | undefined;
       try {
         if (fs.existsSync(this.filePath)) {
           const raw = fs.readFileSync(this.filePath, 'utf-8');
-          this.backupCorrupt(raw);
+          backupFile = this.backupCorrupt(raw);
         }
       } catch {
         // Preserve the original load error; failure to create a backup is non-fatal.
       }
+      this.loadProblem = { kind: 'corrupt', backupFile };
       this.currentPreferences = createDefaultPreferences();
     }
 
     return this.getPreferences();
   }
 
-  private backupCorrupt(content: string): void {
+  /** Saves a copy of the settings that could not be used and returns its file name. */
+  private backupCorrupt(content: string): string | undefined {
     try {
       const corruptPath = `${this.filePath}.corrupt.${Date.now()}`;
       fs.writeFileSync(corruptPath, content, 'utf-8');
+      return path.basename(corruptPath);
     } catch (err) {
       console.error('Failed creating corrupt settings backup:', err);
+      return undefined;
     }
   }
 

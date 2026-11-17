@@ -1,10 +1,16 @@
 import { describe, it, expect } from 'vitest';
+import { randomUUID } from 'crypto';
 import {
   fontSizePtSchema,
   copiesSchema,
   labelTextSchema,
   preferencesV2Schema,
+  preferencesUpdateSchema,
+  layoutFingerprintSchema,
+  preparePrintPayloadSchema,
+  confirmPrintPayloadSchema,
 } from '@shared/schemas';
+import { MAX_LAYOUT_LINES } from '@shared/defaults';
 
 describe('Zod Contracts & Validation Schemas', () => {
   it('validates point sizes strictly', () => {
@@ -67,5 +73,68 @@ describe('Zod Contracts & Validation Schemas', () => {
       },
     };
     expect(preferencesV2Schema.safeParse(valid).success).toBe(true);
+  });
+});
+
+describe('IPC payload schemas', () => {
+  const line = { x: 0, y: 0, width: 10, height: 10 };
+  const fingerprint = {
+    logicalWidthPt: 288,
+    logicalHeightPt: 432,
+    lineRectsPt: [line],
+    lineTextOffsets: [0],
+    overflow: false,
+  };
+  const snapshot = {
+    requestId: randomUUID(),
+    draftRevision: 3,
+    text: 'Hello',
+    profile: '4x6',
+    orientation: 'portrait',
+    resolvedFontFamily: 'Arial',
+    fontSizePt: 24,
+    alignment: 'center',
+    copies: 1,
+    expectedLayout: fingerprint,
+  };
+
+  it('accepts a complete print snapshot with a crypto.randomUUID() request id', () => {
+    expect(preparePrintPayloadSchema.safeParse({ snapshot }).success).toBe(true);
+  });
+
+  it('rejects snapshots with a bad request id, font size or copy count', () => {
+    expect(preparePrintPayloadSchema.safeParse({ snapshot: { ...snapshot, requestId: 'not-a-uuid' } }).success).toBe(false);
+    expect(preparePrintPayloadSchema.safeParse({ snapshot: { ...snapshot, fontSizePt: 24.3 } }).success).toBe(false);
+    expect(preparePrintPayloadSchema.safeParse({ snapshot: { ...snapshot, copies: 0 } }).success).toBe(false);
+    expect(preparePrintPayloadSchema.safeParse({ snapshot: { ...snapshot, profile: '3x5' } }).success).toBe(false);
+  });
+
+  it('requires a uuid request id and a token to confirm a print', () => {
+    expect(confirmPrintPayloadSchema.safeParse({ token: 'abc', requestId: randomUUID() }).success).toBe(true);
+    expect(confirmPrintPayloadSchema.safeParse({ token: '', requestId: randomUUID() }).success).toBe(false);
+    expect(confirmPrintPayloadSchema.safeParse({ token: 'abc', requestId: '123' }).success).toBe(false);
+  });
+
+  it('rejects non-finite layout numbers', () => {
+    expect(layoutFingerprintSchema.safeParse({ ...fingerprint, logicalWidthPt: Infinity }).success).toBe(false);
+    expect(layoutFingerprintSchema.safeParse({ ...fingerprint, logicalHeightPt: NaN }).success).toBe(false);
+  });
+
+  it('caps the number of measured lines in a layout fingerprint', () => {
+    const atCap = new Array(MAX_LAYOUT_LINES).fill(0);
+    const overCap = new Array(MAX_LAYOUT_LINES + 1).fill(0);
+
+    expect(layoutFingerprintSchema.safeParse({ ...fingerprint, lineTextOffsets: atCap }).success).toBe(true);
+    expect(layoutFingerprintSchema.safeParse({ ...fingerprint, lineTextOffsets: overCap }).success).toBe(false);
+    expect(
+      layoutFingerprintSchema.safeParse({ ...fingerprint, lineRectsPt: new Array(MAX_LAYOUT_LINES + 1).fill(line) }).success
+    ).toBe(false);
+  });
+
+  it('accepts partial preference updates but rejects unknown keys', () => {
+    expect(preferencesUpdateSchema.safeParse({ activeProfile: '2x1' }).success).toBe(true);
+    expect(preferencesUpdateSchema.safeParse({}).success).toBe(true);
+    expect(preferencesUpdateSchema.safeParse({ activeProfile: '2x1', extra: true }).success).toBe(false);
+    expect(preferencesUpdateSchema.safeParse({ activeProfile: '9x9' }).success).toBe(false);
   });
 });

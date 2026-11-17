@@ -39,19 +39,46 @@ function resolveSavedQueue(
   return null;
 }
 
+export interface QueueSelection {
+  queue: NormalizedQueue | null;
+  /**
+   * The user chose a printer for this profile earlier, but it cannot be used now
+   * (it is gone, or its identity or connection could not be confirmed). The
+   * choice is kept for when the printer returns, and no other printer is
+   * substituted silently: the user is asked to choose again.
+   */
+  savedProblem: { deviceName: string; kind: 'missing' | 'unusable' } | null;
+}
+
 /**
  * Picks the queue to use for a profile: the saved choice if it is still
- * present and verified, otherwise the first auto-detected USB queue for the
- * profile. Never the OS default printer. Shared by main (which prints) and the
- * renderer (which enables Print) so both always agree.
+ * present and verified; with no saved choice, the first auto-detected USB queue
+ * for the profile. Never the OS default printer, and never a different printer
+ * than the one the user chose. Shared by main (which prints) and the renderer
+ * (which enables Print) so both always agree.
  */
+export function resolveQueueSelection(
+  queues: NormalizedQueue[],
+  profile: PrinterProfile,
+  saved: PrinterChoice | null
+): QueueSelection {
+  if (saved) {
+    const savedQueue = resolveSavedQueue(queues, profile, saved);
+    if (savedQueue && !savedQueue.requiresManualConfirmation) {
+      return { queue: savedQueue, savedProblem: null };
+    }
+    const present = queues.some((queue) => queue.deviceName === saved.deviceName);
+    return { queue: null, savedProblem: { deviceName: saved.deviceName, kind: present ? 'unusable' : 'missing' } };
+  }
+
+  const detected = queues.find((queue) => queue.profile === profile && !queue.requiresManualConfirmation) ?? null;
+  return { queue: detected, savedProblem: null };
+}
+
 export function selectQueueForProfile(
   queues: NormalizedQueue[],
   profile: PrinterProfile,
   saved: PrinterChoice | null
 ): NormalizedQueue | null {
-  const savedQueue = resolveSavedQueue(queues, profile, saved);
-  if (savedQueue && !savedQueue.requiresManualConfirmation) return savedQueue;
-
-  return queues.find((queue) => queue.profile === profile && !queue.requiresManualConfirmation) ?? null;
+  return resolveQueueSelection(queues, profile, saved).queue;
 }

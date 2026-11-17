@@ -4,6 +4,7 @@ import path from 'path';
 import { app } from 'electron';
 import type { PrinterCapabilities } from './printerAdapter';
 import { detectTransport } from './printerAdapter';
+import { parseHelperOutput } from './helperOutput';
 import type { PrinterProfile } from '@shared/contracts';
 import { SP310_OUTPUT_HEIGHT_IN, SP310_OUTPUT_WIDTH_IN } from '@shared/defaults';
 
@@ -17,10 +18,8 @@ export async function inspectMacosPrinter(deviceName: string, profile: PrinterPr
   const helperPath = candidatePaths.find((p) => fs.existsSync(p));
 
   if (helperPath) {
-    try {
-      const result = await runMacHelper(helperPath, deviceName, profile);
-      if (result) return result;
-    } catch {}
+    const result = await runMacHelper(helperPath, deviceName, profile);
+    if (result) return result;
   }
 
   const dimensions = profile === '4x6'
@@ -28,7 +27,8 @@ export async function inspectMacosPrinter(deviceName: string, profile: PrinterPr
     : { width: SP310_OUTPUT_WIDTH_IN * 25.4, height: SP310_OUTPUT_HEIGHT_IN * 25.4 };
 
   return {
-    status: 'ready',
+    // No helper answered, so the real state is not known.
+    status: 'unknown',
     transport: detectTransport('', deviceName),
     paperDimensionsMm: dimensions,
     hardMarginsMm: { left: 0, top: 0, right: 0, bottom: 0 },
@@ -46,28 +46,13 @@ function runMacHelper(helperPath: string, deviceName: string, profile: PrinterPr
       resolve(null);
     }, 8000);
 
-    proc.stdout.on('data', (d) => {
+    proc.stdout.on('data', (d: Buffer) => {
       stdout += d.toString();
     });
 
     proc.on('close', (code) => {
       clearTimeout(timeout);
-      if (code === 0 && stdout.trim()) {
-        try {
-          const json = JSON.parse(stdout.trim());
-          if (json && !json.error) {
-            resolve({
-              status: json.status || 'ready',
-              transport: json.transport || 'unknown',
-              paperDimensionsMm: json.paperDimensionsMm,
-              hardMarginsMm: json.hardMarginsMm,
-              resolutionDpi: json.resolutionDpi,
-            });
-            return;
-          }
-        } catch {}
-      }
-      resolve(null);
+      resolve(code === 0 ? parseHelperOutput(stdout) : null);
     });
 
     proc.on('error', () => {

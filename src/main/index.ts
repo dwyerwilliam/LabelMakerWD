@@ -7,6 +7,7 @@ import { PrinterService } from './services/printerService';
 import { PrintService } from './services/printService';
 import { LifecycleService } from './services/lifecycleService';
 import { registerIpcHandlers } from './ipc/handlers';
+import { configureTrust, isTrustedUrl, setTrustedWindows } from './ipc/trustedSender';
 import { createMainWindow, createPrintWindow } from './window';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -121,12 +122,16 @@ function openWindows(): void {
   mainWindow = win;
   printWindow = printWin;
 
+  setTrustedWindows(win, printWin);
   svc.printers.setMainWindow(win);
   svc.print.setWindows(win, printWin);
   guardClose(win, svc);
 
   win.on('closed', () => {
-    if (mainWindow === win) mainWindow = null;
+    if (mainWindow === win) {
+      mainWindow = null;
+      setTrustedWindows(null, null);
+    }
     if (!printWin.isDestroyed()) printWin.destroy();
     if (printWindow === printWin) printWindow = null;
   });
@@ -134,11 +139,12 @@ function openWindows(): void {
 
 // One-time setup. Windows are created separately (and again on macOS
 // "activate") so protocol and IPC handlers are never registered twice.
-async function bootstrap() {
+function bootstrap() {
   installApplicationMenu();
 
   const distPath = path.join(__dirname, '../../dist');
   registerAppProtocol(distPath);
+  configureTrust({ allowDevOrigin: !app.isPackaged });
 
   const settings = new SettingsService();
   const printers = new PrinterService(settings);
@@ -150,10 +156,7 @@ async function bootstrap() {
 
   // Restrict session permissions: allow only local-fonts for trusted origin
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    const url = webContents.getURL();
-    const isApp = url.startsWith('http://127.0.0.1:15174') || url.startsWith(`${APP_SCHEME}://app`);
-
-    if ((permission as string) === 'local-fonts' && isApp) {
+    if ((permission as string) === 'local-fonts' && isTrustedUrl(webContents.getURL())) {
       callback(true);
       return;
     }
@@ -162,14 +165,24 @@ async function bootstrap() {
 
   session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
     if (!webContents) return false;
-    const url = webContents.getURL();
-    const isApp = url.startsWith('http://127.0.0.1:15174') || url.startsWith(`${APP_SCHEME}://app`);
-
-    return (permission as string) === 'local-fonts' && isApp;
+    return (permission as string) === 'local-fonts' && isTrustedUrl(webContents.getURL());
   });
 
   openWindows();
 }
+
+// Neither window may navigate away from the app, open another window, or embed a
+// webview: the app has no links and loads nothing from the network.
+app.on('web-contents-created', (_event, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  const blockForeignNavigation = (event: { preventDefault: () => void }, url: string) => {
+    if (url.startsWith('devtools://') || isTrustedUrl(url)) return;
+    event.preventDefault();
+  };
+  contents.on('will-navigate', blockForeignNavigation);
+  contents.on('will-redirect', blockForeignNavigation);
+  contents.on('will-attach-webview', (event) => event.preventDefault());
+});
 
 // Single application instance lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -183,7 +196,14 @@ if (!gotTheLock) {
     }
   });
 
-  app.whenReady().then(bootstrap);
+  app
+    .whenReady()
+    .then(bootstrap)
+    .catch((error: unknown) => {
+      console.error('Label Maker could not start:', error);
+      dialog.showErrorBox('Label Maker could not start', error instanceof Error ? error.message : String(error));
+      app.quit();
+    });
 }
 
 app.on('window-all-closed', () => {

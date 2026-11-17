@@ -62,6 +62,8 @@ export interface LabelState {
   setText: (text: string) => void;
   setOrientation: (orientation: Orientation) => void;
   setFontFamily: (family: string, resolved?: string) => void;
+  /** Sets the family the label is really laid out and printed with (the preferred one, or a substitute). */
+  setResolvedFont: (resolved: string) => void;
   setFontSize: (sizePt: number) => void;
   stepFontSize: (deltaPt: number) => void;
   setAlignment: (alignment: Alignment) => void;
@@ -154,6 +156,12 @@ export const useLabelStore = create<LabelState>((set, get) => ({
         [state.activeProfile]: { ...state.profileSettings[state.activeProfile], fontFamily: family },
       },
     });
+  },
+
+  setResolvedFont: (resolved: string) => {
+    const state = get();
+    if (state.draft.resolvedFontFamily === resolved) return;
+    set({ draft: { ...state.draft, resolvedFontFamily: resolved, revision: state.draft.revision + 1 } });
   },
 
   setFontSize: (sizePt: number) => {

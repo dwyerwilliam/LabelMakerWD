@@ -1,4 +1,4 @@
-import type { NormalizedQueue, PrinterProfile, QueueStatus, TransportType } from '@shared/contracts';
+import type { PrinterProfile, QueueStatus, TransportType } from '@shared/contracts';
 
 export interface PrinterCapabilities {
   paperDimensionsMm?: { width: number; height: number };

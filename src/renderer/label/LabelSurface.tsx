@@ -1,5 +1,6 @@
 import React, { forwardRef, useImperativeHandle, useLayoutEffect, useRef } from 'react';
 import type { Alignment, Orientation, PrinterProfile } from '@shared/contracts';
+import { serializeEditableText } from '../editor/textModel';
 import './label.css';
 
 export interface LabelSurfaceProps {
@@ -49,7 +50,7 @@ export const LabelSurface = forwardRef<HTMLDivElement, LabelSurfaceProps>(
     useLayoutEffect(() => {
       if (!isEditing || !editorRef.current || document.activeElement === editorRef.current) return;
 
-      const currentText = editorRef.current.innerText || editorRef.current.textContent || '';
+      const currentText = serializeEditableText(editorRef.current);
       if (currentText !== text) {
         editorRef.current.textContent = text;
       }
@@ -90,7 +91,9 @@ export const LabelSurface = forwardRef<HTMLDivElement, LabelSurfaceProps>(
           ref={editorRef}
           className={textContainerClass}
           style={textStyle}
-          contentEditable={isEditing}
+          // "plaintext-only" makes Enter insert a newline character instead of a <div>,
+          // and keeps rich content (pasted, dropped or typed with shortcuts) out of the label.
+          contentEditable={isEditing ? 'plaintext-only' : false}
           suppressContentEditableWarning
           role="textbox"
           aria-multiline="true"
@@ -100,8 +103,7 @@ export const LabelSurface = forwardRef<HTMLDivElement, LabelSurfaceProps>(
           autoCapitalize="off"
           onInput={(e) => {
             if (onInput) {
-              const target = e.currentTarget;
-              onInput(target.innerText || target.textContent || '');
+              onInput(serializeEditableText(e.currentTarget));
             }
           }}
           onKeyDown={onKeyDown}

@@ -36,6 +36,22 @@ export interface PreferencesV2 {
   profiles: Record<PrinterProfile, ProfilePreferences>;
 }
 
+/** Something about the saved settings the user should be told. */
+export interface SettingsProblem {
+  /** `corrupt`: unreadable, defaults loaded. `newer`: written by a newer version, defaults loaded. `repaired`: some values were invalid and reset. */
+  kind: 'corrupt' | 'newer' | 'repaired';
+  /** File name (not path) of the saved copy of the original settings, when one could be made. */
+  backupFile?: string;
+  /** For `repaired`: which values were reset. */
+  fields?: string[];
+}
+
+export interface LaunchInfo {
+  /** This launch started without a settings file. */
+  firstLaunch: boolean;
+  settingsProblem?: SettingsProblem | null;
+}
+
 export type PreferencesUpdate = Partial<Pick<PreferencesV2, 'activeProfile' | 'profiles'>>;
 
 export interface LayoutFingerprint {
@@ -88,7 +104,7 @@ export interface NormalizedQueue {
   queryTimestamp: number;
 }
 
-export type ConfirmationReason = 'overflow_clipped' | 'printer_offline' | 'printer_unverified';
+export type ConfirmationReason = 'overflow_clipped' | 'printer_unavailable';
 
 export interface PrintPrepareResult {
   token?: string;

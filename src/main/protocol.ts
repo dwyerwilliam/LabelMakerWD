@@ -2,7 +2,9 @@ import { protocol, net } from 'electron';
 import path from 'path';
 import { pathToFileURL } from 'url';
 
-export const APP_SCHEME = 'labelmaker';
+import { APP_SCHEME } from '@shared/appOrigin';
+
+export { APP_SCHEME };
 
 export function registerAppProtocol(distPath: string): void {
   protocol.handle(APP_SCHEME, (request) => {

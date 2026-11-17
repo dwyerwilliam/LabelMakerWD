@@ -23,6 +23,9 @@ function devServerWithoutContentSecurityPolicy(): Plugin {
   };
 }
 
+// Browser-only UI tests need just the renderer served by Vite, not an Electron window.
+const rendererOnly = process.env.LABELMAKER_NO_ELECTRON === '1';
+
 export default defineConfig({
   server: {
     host: '127.0.0.1',
@@ -43,7 +46,7 @@ export default defineConfig({
   plugins: [
     devServerWithoutContentSecurityPolicy(),
     react(),
-    electron([
+    ...(rendererOnly ? [] : [electron([
       {
         entry: 'src/main/index.ts',
         vite: {
@@ -94,7 +97,7 @@ export default defineConfig({
         },
       },
     ]),
-    renderer(),
+    renderer()]),
   ],
   clearScreen: false,
 });

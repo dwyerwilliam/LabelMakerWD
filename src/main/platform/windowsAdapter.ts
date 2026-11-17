@@ -4,6 +4,7 @@ import path from 'path';
 import { app } from 'electron';
 import type { PrinterCapabilities } from './printerAdapter';
 import { detectTransport } from './printerAdapter';
+import { parseHelperOutput, parsePowerShellQueue, parseQueueRows } from './helperOutput';
 import type { PrinterProfile } from '@shared/contracts';
 import { SP310_OUTPUT_HEIGHT_IN, SP310_OUTPUT_WIDTH_IN } from '@shared/defaults';
 
@@ -48,31 +49,25 @@ export function enumerateWindowsPrinters(): Promise<WindowsPrinterRecord[]> {
       resolve([]);
     }, 8000);
 
-    ps.stdout.on('data', (chunk) => {
+    ps.stdout.on('data', (chunk: Buffer) => {
       output += chunk.toString();
     });
     ps.on('close', () => {
       clearTimeout(timer);
-      try {
-        const parsed = JSON.parse(output.trim() || '[]');
-        const rows = Array.isArray(parsed) ? parsed : [parsed];
-        const byName = new Map<string, WindowsPrinterRecord>();
-        for (const row of rows) {
-          if (!row || typeof row.Name !== 'string') continue;
-          const key = row.Name.toLowerCase();
-          const existing = byName.get(key);
-          byName.set(key, {
-            name: row.Name,
-            displayName: row.Name,
-            driverName: row.DriverName || existing?.driverName || '',
-            portName: row.PortName || existing?.portName || '',
-            isDefault: row.Default === true || existing?.isDefault === true,
-          });
-        }
-        resolve([...byName.values()]);
-      } catch {
-        resolve([]);
+      // The same queue can appear twice (Get-Printer and the registry): merge by name.
+      const byName = new Map<string, WindowsPrinterRecord>();
+      for (const row of parseQueueRows(output)) {
+        const key = row.name.toLowerCase();
+        const existing = byName.get(key);
+        byName.set(key, {
+          name: row.name,
+          displayName: row.name,
+          driverName: row.driverName || existing?.driverName || '',
+          portName: row.portName || existing?.portName || '',
+          isDefault: row.isDefault || existing?.isDefault === true,
+        });
       }
+      resolve([...byName.values()]);
     });
     ps.on('error', () => {
       clearTimeout(timer);
@@ -117,28 +112,13 @@ function runNativeHelper(helperPath: string, deviceName: string): Promise<Printe
       resolve(null);
     }, 10000);
 
-    proc.stdout.on('data', (chunk) => {
+    proc.stdout.on('data', (chunk: Buffer) => {
       stdout += chunk.toString();
     });
 
     proc.on('close', (code) => {
       clearTimeout(timeout);
-      if (code === 0 && stdout.trim()) {
-        try {
-          const json = JSON.parse(stdout.trim());
-          if (json && !json.error) {
-            resolve({
-              status: json.status || 'ready',
-              transport: json.transport || 'unknown',
-              paperDimensionsMm: json.paperDimensionsMm,
-              hardMarginsMm: json.hardMarginsMm,
-              resolutionDpi: json.resolutionDpi,
-            });
-            return;
-          }
-        } catch {}
-      }
-      resolve(null);
+      resolve(code === 0 ? parseHelperOutput(stdout) : null);
     });
 
     proc.on('error', () => {
@@ -150,11 +130,12 @@ function runNativeHelper(helperPath: string, deviceName: string): Promise<Printe
 
 function queryPrinterViaPowerShell(deviceName: string, profile: PrinterProfile): Promise<PrinterCapabilities> {
   return new Promise((resolve) => {
-    // Escape single quotes for PowerShell
-    const escapedName = deviceName.replace(/'/g, "''");
+    // The queue name reaches the script through an environment variable, never
+    // through the script text: PowerShell treats typographic quotes as string
+    // delimiters too, so escaping quotes in the name is not enough.
     const script = `
       try {
-        $p = Get-Printer -Name '${escapedName}' -ErrorAction Stop
+        $p = Get-Printer -Name $env:LABELMAKER_QUEUE_NAME -ErrorAction Stop
         $transport = 'unknown'
         if ($p.PortName -match 'USB') { $transport = 'usb' }
         elseif ($p.PortName -match 'BTH|Bluetooth') { $transport = 'bluetooth' }
@@ -172,12 +153,13 @@ function queryPrinterViaPowerShell(deviceName: string, profile: PrinterProfile):
           Transport = $transport
         } | ConvertTo-Json -Compress
       } catch {
-        '{"error":"' + $_.Exception.Message + '"}'
+        [PSCustomObject]@{ error = $_.Exception.Message } | ConvertTo-Json -Compress
       }
     `;
 
     const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
       windowsHide: true,
+      env: { ...process.env, LABELMAKER_QUEUE_NAME: deviceName },
     });
 
     let out = '';
@@ -186,29 +168,28 @@ function queryPrinterViaPowerShell(deviceName: string, profile: PrinterProfile):
       resolve(createDefaultCapabilities(deviceName, profile));
     }, 8000);
 
-    ps.stdout.on('data', (d) => {
+    ps.stdout.on('data', (d: Buffer) => {
       out += d.toString();
     });
 
     ps.on('close', () => {
       clearTimeout(timer);
-      try {
-        const data = JSON.parse(out.trim());
-        if (data && !data.error) {
-          resolve({
-            status: data.Status || 'ready',
-            transport: data.Transport || detectTransport(data.Port, deviceName),
-            paperDimensionsMm: profile === '4x6'
-              ? { width: 101.6, height: 152.4 }
-              : { width: SP310_OUTPUT_WIDTH_IN * 25.4, height: SP310_OUTPUT_HEIGHT_IN * 25.4 },
-            hardMarginsMm: { left: 0, top: 0, right: 0, bottom: 0 },
-            resolutionDpi: { x: 203, y: 203 },
-          });
-          return;
-        }
-      } catch {}
+      const queue = parsePowerShellQueue(out);
+      if (!queue) {
+        resolve(createDefaultCapabilities(deviceName, profile));
+        return;
+      }
 
-      resolve(createDefaultCapabilities(deviceName, profile));
+      resolve({
+        status: queue.status,
+        transport: queue.transport === 'unknown' ? detectTransport(queue.port, deviceName) : queue.transport,
+        // Windows was not asked for the media here, so these are the profile's expected values.
+        paperDimensionsMm: profile === '4x6'
+          ? { width: 101.6, height: 152.4 }
+          : { width: SP310_OUTPUT_WIDTH_IN * 25.4, height: SP310_OUTPUT_HEIGHT_IN * 25.4 },
+        hardMarginsMm: { left: 0, top: 0, right: 0, bottom: 0 },
+        resolutionDpi: { x: 203, y: 203 },
+      });
     });
 
     ps.on('error', () => {
@@ -220,7 +201,8 @@ function queryPrinterViaPowerShell(deviceName: string, profile: PrinterProfile):
 
 function createDefaultCapabilities(deviceName: string, profile: PrinterProfile): PrinterCapabilities {
   return {
-    status: 'ready',
+    // The inspection failed or timed out, so the real state is not known.
+    status: 'unknown',
     transport: detectTransport('', deviceName),
     paperDimensionsMm: profile === '4x6'
       ? { width: 101.6, height: 152.4 }

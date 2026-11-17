@@ -38,7 +38,7 @@ try {
       preferences: { get: async () => preferences, update: async () => {}, reset: async () => preferences },
       printers: { scan: async () => [queue('4x6', 'iDPRT SP410', 'USB001'), queue('2x1', 'iDPRT SP310', 'USB002')], select: async () => null },
       print: { onStateEvent: () => () => {} },
-      app: { setLabelHasText: async () => {} },
+      app: { setLabelHasText: async () => {}, getLaunchInfo: async () => ({ firstLaunch: false }) },
     };
   });
   await page.goto('http://127.0.0.1:4174/', { waitUntil: 'networkidle' });

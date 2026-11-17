@@ -14,6 +14,11 @@ build/
 !native/windows/*.cpp
 !native/macos/*.swift
 
+# Local git worktrees
+worktrees/
+.worktrees/
+.claude/worktrees/
+
 # Logs and test outputs
 *.log
 npm-debug.log*

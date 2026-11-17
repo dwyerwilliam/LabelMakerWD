@@ -15,7 +15,9 @@ export const IPC_CHANNELS = {
   // Hidden print window internal communication
   PRINT_WINDOW_JOB: 'print-window:job',
   PRINT_WINDOW_READY: 'print-window:ready',
+  PRINT_WINDOW_LISTENING: 'print-window:listening',
   PRINT_WINDOW_SUBMIT: 'print-window:submit',
 
   APP_SET_LABEL_HAS_TEXT: 'app:set-label-has-text',
+  APP_GET_LAUNCH_INFO: 'app:get-launch-info',
 } as const;

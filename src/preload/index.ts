@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '@shared/channels';
 import type {
+  LaunchInfo,
   NormalizedQueue,
   PreferencesUpdate,
   PreferencesV2,
@@ -31,6 +32,8 @@ export interface ElectronAPI {
   app: {
     /** Tells main whether the label has text, so closing the window can ask first. */
     setLabelHasText: (hasText: boolean) => Promise<void>;
+    /** Whether this launch started without a settings file. */
+    getLaunchInfo: () => Promise<LaunchInfo>;
   };
 }
 
@@ -51,7 +54,7 @@ const api: ElectronAPI = {
     cancel: (token) => ipcRenderer.invoke(IPC_CHANNELS.PRINT_CANCEL, { token }),
     status: (requestId) => ipcRenderer.invoke(IPC_CHANNELS.PRINT_STATUS, { requestId }),
     onStateEvent: (callback) => {
-      const listener = (_event: Electron.IpcRendererEvent, payload: any) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: { requestId: string; state: string; detail?: string }) => {
         callback(payload);
       };
       ipcRenderer.on(IPC_CHANNELS.PRINT_STATE_EVENT, listener);
@@ -62,6 +65,7 @@ const api: ElectronAPI = {
   },
   app: {
     setLabelHasText: (hasText) => ipcRenderer.invoke(IPC_CHANNELS.APP_SET_LABEL_HAS_TEXT, hasText),
+    getLaunchInfo: () => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_LAUNCH_INFO),
   },
 };
 

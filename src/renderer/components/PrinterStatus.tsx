@@ -10,16 +10,17 @@ export interface PrinterStatusProps {
 
 export const PrinterStatus: React.FC<PrinterStatusProps> = ({ onRescan }) => {
   const activeProfile = useLabelStore((s) => s.activeProfile);
-  const { selectedQueues, isScanning, error } = useDeviceStore();
+  const { selectedQueues, savedProblems, isScanning, error } = useDeviceStore();
   const selectedQueue = selectedQueues[activeProfile];
+  const savedProblem = savedProblems[activeProfile];
   const { openDialog, printStatusText } = useUIStore();
   const saveStatus = usePreferencesStore((s) => s.saveStatus);
   const saveError = usePreferencesStore((s) => s.errorMessage);
   const retrySave = usePreferencesStore((s) => s.retrySave);
 
   const profileLabel = activeProfile === '4x6' ? 'SP410' : 'SP310';
-  let statusText = `Looking for ${profileLabel}…`;
-  let badgeColor = 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300';
+  let statusText: string;
+  let badgeColor: string;
 
   if (isScanning) {
     statusText = 'Scanning for printers…';
@@ -34,10 +35,20 @@ export const PrinterStatus: React.FC<PrinterStatusProps> = ({ onRescan }) => {
     } else if (selectedQueue.status === 'offline') {
       statusText = `${selectedQueue.displayName} — Offline`;
       badgeColor = 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300';
+    } else if (selectedQueue.status === 'paused' || selectedQueue.status === 'error') {
+      statusText = `${selectedQueue.displayName} — ${selectedQueue.status === 'paused' ? 'Paused' : 'Error'}`;
+      badgeColor = 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300';
     } else {
       statusText = `${selectedQueue.displayName} — Installed`;
       badgeColor = 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300';
     }
+  } else if (savedProblem) {
+    // Never swap in another printer silently; keep the choice and ask.
+    statusText =
+      savedProblem.kind === 'missing'
+        ? `Saved ${profileLabel} printer "${savedProblem.deviceName}" not found`
+        : `Saved ${profileLabel} printer "${savedProblem.deviceName}" needs to be confirmed again`;
+    badgeColor = 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300';
   } else {
     statusText = `No ${profileLabel} selected`;
     badgeColor = 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300';

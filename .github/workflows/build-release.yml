@@ -53,6 +53,11 @@ jobs:
         run: npx electron-builder --${{ matrix.target }} --${{ matrix.arch }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # Starts the packaged app itself (fuses, protocol, bundled helper, font access).
+      # macOS packages are untested, so a failure there is reported without blocking the release yet.
+      - name: Smoke-test the packaged app
+        run: npm run test:packaged
+        continue-on-error: ${{ matrix.target == 'mac' }}
       - name: Upload installer
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

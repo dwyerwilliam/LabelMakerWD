@@ -4,6 +4,15 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+async function loadPage(win: BrowserWindow, url: string): Promise<void> {
+  try {
+    await win.loadURL(url);
+  } catch (error) {
+    // Navigation errors (a blocked or failed load) are reported by did-fail-load too.
+    console.error(`Could not load ${url}:`, error);
+  }
+}
+
 export function createMainWindow(): BrowserWindow {
   const isDev = !!process.env.VITE_DEV_SERVER_URL;
   const preloadPath = path.join(__dirname, '../preload/index.cjs');
@@ -54,21 +63,26 @@ export function createMainWindow(): BrowserWindow {
     },
   });
 
+  const showMainAndCloseSplash = () => {
+    if (!win.isDestroyed()) win.show();
+    if (!splash.isDestroyed()) splash.close();
+  };
+
   win.once('ready-to-show', () => {
-    void splashShown.then(() => {
-      if (!win.isDestroyed()) win.show();
-      if (!splash.isDestroyed()) splash.close();
-    });
+    void splashShown.then(showMainAndCloseSplash);
   });
   win.once('closed', () => {
     if (!splash.isDestroyed()) splash.close();
   });
 
-  if (isDev) {
-    win.loadURL(process.env.VITE_DEV_SERVER_URL!);
-  } else {
-    win.loadURL('labelmaker://app/index.html');
-  }
+  // The splash must never be left on screen with no way to close it: if the app
+  // page fails to load (or never reports ready), show the window anyway.
+  win.webContents.once('did-fail-load', showMainAndCloseSplash);
+  const splashFailsafe = setTimeout(showMainAndCloseSplash, 20_000);
+  win.once('show', () => clearTimeout(splashFailsafe));
+  win.once('closed', () => clearTimeout(splashFailsafe));
+
+  void loadPage(win, isDev ? process.env.VITE_DEV_SERVER_URL! : 'labelmaker://app/index.html');
 
   return win;
 }
@@ -91,11 +105,7 @@ export function createPrintWindow(): BrowserWindow {
     },
   });
 
-  if (isDev) {
-    win.loadURL(`${process.env.VITE_DEV_SERVER_URL}/print.html`);
-  } else {
-    win.loadURL('labelmaker://app/print.html');
-  }
+  void loadPage(win, isDev ? `${process.env.VITE_DEV_SERVER_URL}/print.html` : 'labelmaker://app/print.html');
 
   return win;
 }

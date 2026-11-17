@@ -71,7 +71,7 @@ test.beforeEach(async ({ page }) => {
         status: async () => ({ requestId: '1', state: 'idle' }),
         onStateEvent: () => () => {},
       },
-      app: { setLabelHasText: async () => {} },
+      app: { setLabelHasText: async () => {}, getLaunchInfo: async () => ({ firstLaunch: false }) },
     };
   });
 

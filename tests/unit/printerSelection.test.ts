@@ -4,6 +4,7 @@ import {
   isUnsupportedTransport,
   queueIdentityFingerprint,
   selectQueueForProfile,
+  resolveQueueSelection,
 } from '@shared/printerSelection';
 
 function queue(overrides: Partial<NormalizedQueue> & { deviceName: string }): NormalizedQueue {
@@ -87,5 +88,47 @@ describe('selectQueueForProfile', () => {
     expect(isUnsupportedTransport('network')).toBe(true);
     expect(isUnsupportedTransport('usb')).toBe(false);
     expect(isUnsupportedTransport('unknown')).toBe(false);
+  });
+});
+
+describe('resolveQueueSelection', () => {
+  const sp410 = queue({ deviceName: 'iDPRT SP410BT', profile: '4x6' });
+  const spare = queue({ deviceName: 'Second SP410', profile: '4x6', port: 'USB005' });
+
+  it('keeps a saved choice that has disappeared and does not substitute another printer', () => {
+    const saved = choice(queue({ deviceName: 'Old SP410', profile: '4x6' }));
+    const result = resolveQueueSelection([sp410, spare], '4x6', saved);
+    expect(result.queue).toBeNull();
+    expect(result.savedProblem).toEqual({ deviceName: 'Old SP410', kind: 'missing' });
+  });
+
+  it('flags a saved choice that is present but cannot be used', () => {
+    const unknownTransport = queue({
+      deviceName: 'iDPRT SP310',
+      profile: '2x1',
+      port: 'COM5',
+      transport: 'unknown',
+      requiresManualConfirmation: true,
+    });
+    const saved = choice(unknownTransport, { identityFingerprint: 'stale' });
+    expect(resolveQueueSelection([unknownTransport], '2x1', saved).savedProblem).toEqual({
+      deviceName: 'iDPRT SP310',
+      kind: 'unusable',
+    });
+  });
+
+  it('still auto-selects when nothing was ever saved', () => {
+    const result = resolveQueueSelection([sp410, spare], '4x6', null);
+    expect(result.queue?.deviceName).toBe('iDPRT SP410BT');
+    expect(result.savedProblem).toBeNull();
+  });
+
+  it('keeps a detected USB queue selected when its driver string changed or the saved fingerprint is empty', () => {
+    // Settings written by an early build stored "::" as the fingerprint.
+    const saved = choice(sp410, { identityFingerprint: '::' });
+    const reinstalled = { ...sp410, driver: 'iDPRT SP410BT (v2)' };
+    const result = resolveQueueSelection([reinstalled], '4x6', saved);
+    expect(result.queue?.deviceName).toBe('iDPRT SP410BT');
+    expect(result.savedProblem).toBeNull();
   });
 });

@@ -5,6 +5,8 @@ import type { LayoutFingerprint, PrintSnapshot } from '@shared/contracts';
 export interface PrintWindowAPI {
   onJob: (callback: (snapshot: PrintSnapshot) => void) => () => void;
   reportReady: (requestId: string, fingerprint: LayoutFingerprint) => void;
+  /** Tells main the print page is listening for jobs; main sends none before this. */
+  reportListening: () => void;
 }
 
 const printApi: PrintWindowAPI = {
@@ -19,6 +21,9 @@ const printApi: PrintWindowAPI = {
   },
   reportReady: (requestId: string, fingerprint: LayoutFingerprint) => {
     ipcRenderer.send(IPC_CHANNELS.PRINT_WINDOW_READY, { requestId, fingerprint });
+  },
+  reportListening: () => {
+    ipcRenderer.send(IPC_CHANNELS.PRINT_WINDOW_LISTENING);
   },
 };
 

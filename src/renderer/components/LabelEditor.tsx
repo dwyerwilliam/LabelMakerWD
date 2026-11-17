@@ -4,7 +4,7 @@ import { LabelSurface } from '../label/LabelSurface';
 import { calculateFitScale, getPageDimensions } from '../label/geometry';
 import { measureLayoutFingerprint } from '../label/layout';
 import { EditHistory } from '../editor/history';
-import { normalizePlainText, sanitizePastedHtml } from '../editor/textModel';
+import { normalizePlainText, sanitizePastedHtml, serializeEditableText } from '../editor/textModel';
 import {
   getCaretCharacterOffsetWithin,
   setCaretCharacterOffsetWithin,
@@ -49,9 +49,7 @@ export const LabelEditor: React.FC = () => {
       return;
     }
     if (editorElRef.current) {
-      const domText = normalizePlainText(
-        editorElRef.current.innerText || editorElRef.current.textContent || ''
-      );
+      const domText = normalizePlainText(serializeEditableText(editorElRef.current));
       if (domText !== draft.text) {
         editorElRef.current.textContent = draft.text;
       }
@@ -74,7 +72,7 @@ export const LabelEditor: React.FC = () => {
       );
       setLayoutFingerprint(fingerprint, draft.revision);
     }
-  }, [draft.profile, draft.orientation, draft.revision, overflow, setLayoutFingerprint]);
+  }, [draft.profile, draft.orientation, draft.revision, setLayoutFingerprint]);
 
   useEffect(() => {
     runMeasurement();
@@ -82,10 +80,20 @@ export const LabelEditor: React.FC = () => {
 
   // Handle plain text input
   const handleInput = (rawText: string) => {
+    const element = editorElRef.current;
     const normalized = normalizePlainText(rawText);
-    const caret = editorElRef.current
-      ? getCaretCharacterOffsetWithin(editorElRef.current)
+    let caret = element
+      ? getCaretCharacterOffsetWithin(element)
       : { start: normalized.length, end: normalized.length };
+
+    if (element && normalized !== rawText) {
+      // Text arrived with tabs or CR characters (a drop, voice input, ...). Show
+      // exactly what will print, and keep the caret where it was in that text.
+      const end = normalizePlainText(rawText.slice(0, caret.end)).length;
+      element.textContent = normalized;
+      setCaretCharacterOffsetWithin(element, end);
+      caret = { start: end, end };
+    }
 
     historyRef.current.push(normalized, caret, 'type');
     isUserInputRef.current = true;
@@ -117,7 +125,7 @@ export const LabelEditor: React.FC = () => {
     selection.addRange(range);
 
     if (editorElRef.current) {
-      const newText = normalizePlainText(editorElRef.current.innerText || editorElRef.current.textContent || '');
+      const newText = normalizePlainText(serializeEditableText(editorElRef.current));
       const caret = getCaretCharacterOffsetWithin(editorElRef.current);
       historyRef.current.push(newText, caret, 'paste');
       isUserInputRef.current = true;
@@ -188,6 +196,17 @@ export const LabelEditor: React.FC = () => {
             <span>⚠️</span>
             <span>Text doesn't fit. Reduce the font size or shorten the text.</span>
           </div>
+        </div>
+      )}
+
+      {/* A saved font that is not installed is replaced; say so before anything prints. */}
+      {draft.resolvedFontFamily !== draft.preferredFontFamily && (
+        <div role="status" className="flex items-center gap-2 bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white shadow-md">
+          <span>⚠️</span>
+          <span>
+            The font "{draft.preferredFontFamily}" is not installed on this computer. This label will print in "
+            {draft.resolvedFontFamily}" instead. Choose another font to change it.
+          </span>
         </div>
       )}
 

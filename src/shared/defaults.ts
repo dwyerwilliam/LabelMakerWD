@@ -51,6 +51,11 @@ export const MIN_FONT_SIZE_PT = 6.0;
 export const MAX_FONT_SIZE_PT = 288.0;
 export const FONT_SIZE_STEP_PT = 0.5;
 
+// Upper bound on measured lines in a layout fingerprint received over IPC. A real
+// label shows well under a hundred lines; the cap just keeps a malformed payload
+// from forcing validation of an enormous array.
+export const MAX_LAYOUT_LINES = 100_000;
+
 export const MIN_COPIES = 1;
 export const MAX_COPIES = 99;
 

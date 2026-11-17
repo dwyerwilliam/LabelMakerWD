@@ -13,25 +13,31 @@ export const PrintDocument: React.FC = () => {
   useEffect(() => {
     if (!window.printApi) return;
 
-    const unsubscribe = window.printApi.onJob(async (job) => {
+    const unsubscribe = window.printApi.onJob((job) => {
       setSnapshot(job);
 
-      // Ensure the font is fully loaded in this window
-      await ensureFontLoaded(job.resolvedFontFamily, job.fontSizePt, job.text || 'A');
+      void (async () => {
+        // Ensure the font is fully loaded in this window
+        await ensureFontLoaded(job.resolvedFontFamily, job.fontSizePt, job.text || 'A');
 
-      // Request next animation frame to ensure browser layout has completed
-      requestAnimationFrame(() => {
-        if (containerRef.current) {
-          const fingerprint = measureLayoutFingerprint(
-            containerRef.current,
-            job.profile,
-            job.orientation,
-            job.profile === '4x6' && job.orientation === 'landscape'
-          );
-          window.printApi.reportReady(job.requestId, fingerprint);
-        }
-      });
+        // Request next animation frame to ensure browser layout has completed
+        requestAnimationFrame(() => {
+          if (containerRef.current) {
+            const fingerprint = measureLayoutFingerprint(
+              containerRef.current,
+              job.profile,
+              job.orientation,
+              job.profile === '4x6' && job.orientation === 'landscape'
+            );
+            window.printApi.reportReady(job.requestId, fingerprint);
+          }
+        });
+      })();
     });
+
+    // Main waits for this before sending the first job; a job sent while the
+    // page was still loading would be lost.
+    window.printApi.reportListening();
 
     return unsubscribe;
   }, []);

@@ -25,3 +25,56 @@ describe('Text Model Normalization', () => {
     }
   });
 });
+
+// Minimal DOM-shaped trees, so the serializer can be tested without a browser.
+import { serializeEditableText, type SerializableNode } from '@renderer/editor/textModel';
+
+const text = (value: string): SerializableNode => ({ nodeType: 3, nodeValue: value, childNodes: [] });
+const el = (tagName: string, ...children: SerializableNode[]): SerializableNode => ({
+  nodeType: 1,
+  nodeValue: null,
+  tagName,
+  childNodes: children,
+});
+const br = () => el('BR');
+const div = (...children: SerializableNode[]) => el('DIV', ...children);
+const root = (...children: SerializableNode[]) => el('DIV', ...children);
+
+describe('serializeEditableText', () => {
+  it('returns text nodes as they are, including newline characters', () => {
+    expect(serializeEditableText(root(text('a\n\nb')))).toBe('a\n\nb');
+    expect(serializeEditableText(root(text('  spaced   out  ')))).toBe('  spaced   out  ');
+  });
+
+  it('is empty for an empty editor, with or without the placeholder <br>', () => {
+    expect(serializeEditableText(root())).toBe('');
+    expect(serializeEditableText(root(br()))).toBe('');
+  });
+
+  it('ignores the placeholder <br> after text', () => {
+    expect(serializeEditableText(root(text('x\n'), br()))).toBe('x\n');
+    expect(serializeEditableText(root(text('abc'), br()))).toBe('abc');
+  });
+
+  it('turns blocks into lines and a lone <br> block into exactly one empty line', () => {
+    // a, <div>b</div>
+    expect(serializeEditableText(root(text('a'), div(text('b'))))).toBe('a\nb');
+    // a, one blank line, b  (innerText reported two blank lines here)
+    expect(serializeEditableText(root(text('a'), div(br()), div(text('b'))))).toBe('a\n\nb');
+    // two blank lines
+    expect(serializeEditableText(root(text('a'), div(br()), div(br()), div(text('b'))))).toBe('a\n\n\nb');
+  });
+
+  it('keeps a <br> inside a line as a line break', () => {
+    expect(serializeEditableText(root(text('a'), br(), text('b')))).toBe('a\nb');
+  });
+
+  it('reads through inline elements and nested blocks', () => {
+    expect(serializeEditableText(root(el('B', text('bold')), text(' and '), el('I', text('italic'))))).toBe('bold and italic');
+    expect(serializeEditableText(root(div(div(text('a'))), div(text('b'))))).toBe('a\nb');
+  });
+
+  it('ignores empty blocks', () => {
+    expect(serializeEditableText(root(text('a'), div(), div(text('b'))))).toBe('a\nb');
+  });
+});

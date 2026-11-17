@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import type { NormalizedQueue, PrinterProfile } from '@shared/contracts';
 import { isUnsupportedTransport } from '@shared/printerSelection';
+import { describeIpcError } from '../ipcError';
+import { ModalFrame } from './ModalFrame';
 import { useDeviceStore } from '../stores/deviceStore';
 import { useUIStore } from '../stores/uiStore';
-import { enumerateSystemFonts } from '../fonts/fontCatalog';
+import { useFontStore } from '../stores/fontStore';
 
 export interface SettingsDialogProps {
   onRefreshPrinters: () => void;
@@ -20,24 +22,20 @@ const PROFILE_INFO: Record<PrinterProfile, { label: string; model: string; stock
   '2x1': { label: '2 × 1', model: 'SP310', stock: 'DYMO 30334 · 2¼ × 1¼ inch stock' },
 };
 
-/** Electron wraps main-process errors as "Error invoking remote method '...': Error: <message>". */
-function describeError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '') || 'Could not select this printer.';
-}
-
 export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   onRefreshPrinters,
   onRestoreDefaults,
   onSelectPrinter,
 }) => {
   const { activeDialog, closeDialog } = useUIStore();
-  const { queues, selectedQueues } = useDeviceStore();
+  const titleId = useId();
+  const { queues, selectedQueues, savedProblems } = useDeviceStore();
   const [renamedProfile, setRenamedProfile] = useState<PrinterProfile | null>(null);
   const [selectedRenamedQueue, setSelectedRenamedQueue] = useState('');
   const [usbConfirmed, setUsbConfirmed] = useState(false);
   const [stockConfirmed, setStockConfirmed] = useState(false);
-  const [refreshFontsSuccess, setRefreshFontsSuccess] = useState(false);
+  const [fontsMessage, setFontsMessage] = useState<string | null>(null);
+  const [fontsRefreshing, setFontsRefreshing] = useState(false);
   // A correctly named queue whose connection type could not be read: the user
   // must confirm it is USB before it can be used.
   const [usbPrompt, setUsbPrompt] = useState<{ profile: PrinterProfile; deviceName: string } | null>(null);
@@ -51,7 +49,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     try {
       await onSelectPrinter(profile, queue.deviceName, false);
     } catch (error) {
-      setSelectError({ profile, message: describeError(error) });
+      setSelectError({ profile, message: describeIpcError(error, 'Could not select this printer.') });
     }
   };
 
@@ -64,7 +62,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
       setUsbPrompt(null);
       setUsbPromptConfirmed(false);
     } catch (error) {
-      setSelectError({ profile, message: describeError(error) });
+      setSelectError({ profile, message: describeIpcError(error, 'Could not select this printer.') });
     }
   };
 
@@ -78,24 +76,39 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
       setUsbConfirmed(false);
       setStockConfirmed(false);
     } catch (error) {
-      setSelectError({ profile: renamedProfile, message: describeError(error) });
+      setSelectError({ profile: renamedProfile, message: describeIpcError(error, 'Could not select this printer.') });
     }
   };
 
   const handleRefreshFonts = async () => {
-    await enumerateSystemFonts();
-    setRefreshFontsSuccess(true);
-    setTimeout(() => setRefreshFontsSuccess(false), 2500);
+    setFontsRefreshing(true);
+    setFontsMessage(null);
+    try {
+      await useFontStore.getState().load();
+      const { fonts, source } = useFontStore.getState();
+      setFontsMessage(
+        source === 'system'
+          ? `Found ${fonts.length} installed font famil${fonts.length === 1 ? 'y' : 'ies'}.`
+          : `The installed font list could not be read; showing the ${fonts.length} common font${fonts.length === 1 ? '' : 's'} found on this computer.`
+      );
+    } catch {
+      setFontsMessage('Could not read the installed fonts. Try again.');
+    } finally {
+      setFontsRefreshing(false);
+    }
   };
 
   const unassignedQueues = queues.filter((queue) => queue.profile === null && !isUnsupportedTransport(queue.transport));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-lg bg-white shadow-2xl dark:bg-slate-900">
+    <ModalFrame
+      labelledBy={titleId}
+      onEscape={closeDialog}
+      className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-lg bg-white shadow-2xl focus:outline-none dark:bg-slate-900"
+    >
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Settings</h2>
-          <button type="button" onClick={closeDialog} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">✕</button>
+          <h2 id={titleId} className="text-lg font-semibold text-slate-900 dark:text-white">Settings</h2>
+          <button type="button" onClick={closeDialog} aria-label="Close settings" className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">✕</button>
         </div>
 
         <div className="flex-1 space-y-6 overflow-y-auto px-6 py-4">
@@ -113,6 +126,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 const info = PROFILE_INFO[profile];
                 const eligibleQueues = queues.filter((queue) => queue.profile === profile);
                 const selectedQueue = selectedQueues[profile];
+                const savedProblem = savedProblems[profile];
                 const isRenamedOpen = renamedProfile === profile;
 
                 return (
@@ -124,6 +138,14 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                       </div>
                       <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">{profile === '4x6' ? 'SP410 Match' : 'SP310 Match'}</span>
                     </div>
+
+                    {savedProblem && (
+                      <div role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-200">
+                        {savedProblem.kind === 'missing'
+                          ? `Your saved printer "${savedProblem.deviceName}" is not installed right now. It is remembered for when it returns; choose another printer below to use one in the meantime.`
+                          : `Your saved printer "${savedProblem.deviceName}" changed and has to be confirmed again. Choose it below to confirm.`}
+                      </div>
+                    )}
 
                     <div className="mt-3 space-y-2">
                       {eligibleQueues.map((queue) => {
@@ -209,8 +231,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">System Fonts</h3>
             <p className="mt-1 text-xs text-slate-500">Label Maker enumerates local fonts installed on your computer.</p>
             <div className="mt-2 flex items-center gap-3">
-              <button type="button" onClick={() => void handleRefreshFonts()} className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">Refresh Fonts</button>
-              {refreshFontsSuccess && <span className="text-xs text-emerald-600 dark:text-emerald-400">Fonts reloaded successfully!</span>}
+              <button type="button" disabled={fontsRefreshing} onClick={() => void handleRefreshFonts()} className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">{fontsRefreshing ? 'Refreshing…' : 'Refresh Fonts'}</button>
+              {fontsMessage && <span role="status" className="text-xs text-emerald-600 dark:text-emerald-400">{fontsMessage}</span>}
             </div>
           </section>
 
@@ -224,7 +246,6 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
         <div className="flex justify-end border-t border-slate-200 px-6 py-3 dark:border-slate-800">
           <button type="button" onClick={closeDialog} className="rounded bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">Done</button>
         </div>
-      </div>
-    </div>
+    </ModalFrame>
   );
 };

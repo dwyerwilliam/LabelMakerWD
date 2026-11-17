@@ -1,11 +1,14 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '@shared/channels';
-import { validateIpcSender } from './trustedSender';
+import { isTrustedSender, validateIpcSender } from './trustedSender';
 import {
   preferencesUpdateSchema,
-  printerProfileSchema,
+  selectPrinterPayloadSchema,
   preparePrintPayloadSchema,
   confirmPrintPayloadSchema,
+  cancelPrintPayloadSchema,
+  printStatusPayloadSchema,
+  printWindowReadyPayloadSchema,
   labelHasTextSchema,
 } from '@shared/schemas';
 import type { SettingsService } from '../services/settingsService';
@@ -43,10 +46,10 @@ export function registerIpcHandlers(
     return printerService.scan();
   });
 
-  ipcMain.handle(IPC_CHANNELS.PRINTERS_SELECT, async (event, { profile, deviceName, manualConfirm }) => {
+  ipcMain.handle(IPC_CHANNELS.PRINTERS_SELECT, async (event, payload) => {
     validateIpcSender(event);
-    const parsedProfile = printerProfileSchema.parse(profile);
-    return printerService.selectQueue(parsedProfile, deviceName, manualConfirm);
+    const { profile, deviceName, manualConfirm } = selectPrinterPayloadSchema.parse(payload);
+    return printerService.selectQueue(profile, deviceName, manualConfirm ?? false);
   });
 
   // Printing
@@ -62,22 +65,39 @@ export function registerIpcHandlers(
     return printService.confirm(token, requestId);
   });
 
-  ipcMain.handle(IPC_CHANNELS.PRINT_CANCEL, (event, { token }) => {
+  ipcMain.handle(IPC_CHANNELS.PRINT_CANCEL, (event, payload) => {
     validateIpcSender(event);
+    const { token } = cancelPrintPayloadSchema.parse(payload);
     printService.cancel(token);
   });
 
-  ipcMain.handle(IPC_CHANNELS.PRINT_STATUS, (event, { requestId }) => {
+  ipcMain.handle(IPC_CHANNELS.PRINT_STATUS, (event, payload) => {
     validateIpcSender(event);
+    const { requestId } = printStatusPayloadSchema.parse(payload);
     return printService.getStatus(requestId);
   });
 
-  // Hidden print window ready report
-  ipcMain.on(IPC_CHANNELS.PRINT_WINDOW_READY, (event, { requestId, fingerprint }) => {
-    printService.handlePrintWindowReady(requestId, fingerprint);
+  // The hidden print window says it is ready to receive jobs.
+  ipcMain.on(IPC_CHANNELS.PRINT_WINDOW_LISTENING, (event) => {
+    if (!isTrustedSender(event, 'print')) return;
+    printService.handlePrintWindowListening();
+  });
+
+  // The hidden print window reports its measured layout. Only that window may,
+  // and a malformed report is ignored (the preparation then times out).
+  ipcMain.on(IPC_CHANNELS.PRINT_WINDOW_READY, (event, payload) => {
+    if (!isTrustedSender(event, 'print')) return;
+    const parsed = printWindowReadyPayloadSchema.safeParse(payload);
+    if (!parsed.success) return;
+    printService.handlePrintWindowReady(parsed.data.requestId, parsed.data.fingerprint);
   });
 
   // App lifecycle
+  ipcMain.handle(IPC_CHANNELS.APP_GET_LAUNCH_INFO, (event) => {
+    validateIpcSender(event);
+    return { firstLaunch: settingsService.isFreshInstall(), settingsProblem: settingsService.getLoadProblem() };
+  });
+
   ipcMain.handle(IPC_CHANNELS.APP_SET_LABEL_HAS_TEXT, (event, hasText) => {
     validateIpcSender(event);
     lifecycleService.setLabelHasText(labelHasTextSchema.parse(hasText));

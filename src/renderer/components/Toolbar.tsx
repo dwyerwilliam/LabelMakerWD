@@ -1,22 +1,22 @@
-import React, { useEffect, useRef, useState } from 'react';
-import type { Alignment, FontItem, Orientation, PrinterProfile } from '@shared/contracts';
+import React, { useEffect, useRef } from 'react';
+import type { Alignment, Orientation, PrinterProfile } from '@shared/contracts';
 import { useLabelStore } from '../stores/labelStore';
 import { usePreferencesStore } from '../stores/preferencesStore';
-import { useDeviceStore } from '../stores/deviceStore';
 import { useUIStore } from '../stores/uiStore';
-import { enumerateSystemFonts } from '../fonts/fontCatalog';
+import { useFontStore } from '../stores/fontStore';
+import { usePrintBlockers } from '../hooks/usePrintBlockers';
+import { parseCopiesInput, parseFontSizeInput } from '@shared/inputValidation';
 
 export interface ToolbarProps {
   onPrintClick: () => void;
-  layoutReady: boolean;
 }
 
-export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) => {
+export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
   const { activeProfile, draft, setActiveProfile, setOrientation, setFontFamily, setFontSize, stepFontSize, setAlignment, setCopies } =
     useLabelStore();
   const updatePreferences = usePreferencesStore((s) => s.update);
   const updateProfilePreferences = usePreferencesStore((s) => s.updateProfile);
-  const selectedQueue = useDeviceStore((s) => s.selectedQueues[activeProfile]);
+  const printBlockers = usePrintBlockers();
   const {
     openDialog,
     isPrintBusy,
@@ -30,17 +30,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) =
     setFontSearchQuery,
   } = useUIStore();
 
-  const [availableFonts, setAvailableFonts] = useState<FontItem[]>([]);
+  const availableFonts = useFontStore((s) => s.fonts);
   const fontDropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    enumerateSystemFonts().then(setAvailableFonts);
-  }, []);
 
   // Sync draft strings when external state changes
   useEffect(() => {
     setFontSizeDraft(draft.fontSizePt.toString());
-  }, [draft.fontSizePt, setFontSizeDraft]);
+  }, [draft.fontSizePt, activeProfile, setFontSizeDraft]);
 
   useEffect(() => {
     setCopiesDraft(draft.copies.toString());
@@ -68,27 +64,24 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) =
     setFontPickerOpen(false);
   };
 
+  // An invalid entry is kept and flagged (Print is disabled while it stands);
+  // the label keeps its last valid size. Escape restores the last valid value.
+  const fontSizeResult = parseFontSizeInput(fontSizeDraft);
+  const copiesResult = parseCopiesInput(copiesDraft);
+
   const handleFontSizeCommit = (raw: string) => {
-    const parsed = parseFloat(raw);
-    if (!isNaN(parsed) && parsed >= 6 && parsed <= 288) {
-      const rounded = Math.round(parsed * 2) / 2;
-      setFontSize(rounded);
-      updateProfilePreferences(activeProfile, { fontSizePt: rounded });
-      setFontSizeDraft(rounded.toString());
-    } else {
-      // Revert to valid value on escape or blur
-      setFontSizeDraft(draft.fontSizePt.toString());
-    }
+    const parsed = parseFontSizeInput(raw);
+    if (!parsed.ok) return;
+    setFontSize(parsed.value);
+    updateProfilePreferences(activeProfile, { fontSizePt: parsed.value });
+    setFontSizeDraft(parsed.value.toString());
   };
 
   const handleCopiesCommit = (raw: string) => {
-    const parsed = parseInt(raw, 10);
-    if (!isNaN(parsed) && parsed >= 1 && parsed <= 99) {
-      setCopies(parsed);
-      setCopiesDraft(parsed.toString());
-    } else {
-      setCopiesDraft(draft.copies.toString());
-    }
+    const parsed = parseCopiesInput(raw);
+    if (!parsed.ok) return;
+    setCopies(parsed.value);
+    setCopiesDraft(parsed.value.toString());
   };
 
   const handleAlignmentChange = (align: Alignment) => {
@@ -105,7 +98,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) =
     f.family.toLowerCase().includes(fontSearchQuery.toLowerCase())
   );
 
-  const isPrintDisabled = draft.text.trim().length === 0 || isPrintBusy || !selectedQueue || !layoutReady;
+  const isPrintDisabled = printBlockers.length > 0;
   const isSmallProfile = activeProfile === '2x1';
   const profileLabel = isSmallProfile ? '2 × 1' : '4 × 6';
 
@@ -146,6 +139,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) =
           <button
             type="button"
             onClick={() => handleOrientationChange('portrait')}
+            aria-pressed={draft.orientation === 'portrait'}
             className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
               draft.orientation === 'portrait'
                 ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-700 dark:text-blue-400'
@@ -158,6 +152,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) =
           <button
             type="button"
             onClick={() => handleOrientationChange('landscape')}
+            aria-pressed={draft.orientation === 'landscape'}
             className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
               draft.orientation === 'landscape'
                 ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-700 dark:text-blue-400'
@@ -174,10 +169,24 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) =
         )}
 
         {/* Font Family Picker */}
-        <div className="relative" ref={fontDropdownRef}>
+        <div
+          className="relative"
+          ref={fontDropdownRef}
+          onKeyDown={(e) => {
+            // Escape closes the list and puts focus back on the button that opened it.
+            if (e.key === 'Escape' && fontPickerOpen) {
+              e.stopPropagation();
+              setFontPickerOpen(false);
+              fontDropdownRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+            }
+          }}
+        >
           <button
             type="button"
             onClick={() => setFontPickerOpen(!fontPickerOpen)}
+            aria-label={`Font family: ${draft.preferredFontFamily}`}
+            aria-haspopup="true"
+            aria-expanded={fontPickerOpen}
             className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 w-36"
             title="Select Font Family"
           >
@@ -231,11 +240,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) =
               value={fontSizeDraft}
               onChange={(e) => setFontSizeDraft(e.target.value)}
               onBlur={(e) => handleFontSizeCommit(e.target.value)}
+              aria-invalid={!fontSizeResult.ok}
+              aria-describedby={fontSizeResult.ok ? undefined : 'fontSizeError'}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleFontSizeCommit((e.target as HTMLInputElement).value);
                 if (e.key === 'Escape') setFontSizeDraft(draft.fontSizePt.toString());
               }}
-              className="w-12 px-1.5 py-1 text-center text-xs text-slate-800 focus:outline-none dark:bg-transparent dark:text-slate-200"
+              className={`w-12 px-1.5 py-1 text-center text-xs focus:outline-none dark:bg-transparent ${fontSizeResult.ok ? 'text-slate-800 dark:text-slate-200' : 'text-red-600 dark:text-red-400'}`}
               title="Font point size (6 - 288)"
             />
             <span className="pr-1 text-[10px] text-slate-400">pt</span>
@@ -248,6 +259,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) =
                 }}
                 className="px-1 text-[9px] hover:bg-slate-100 dark:hover:bg-slate-700"
                 title="Increase 1 pt"
+                aria-label="Increase font size by 1 point"
               >
                 ▲
               </button>
@@ -259,11 +271,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) =
                 }}
                 className="px-1 text-[9px] hover:bg-slate-100 dark:hover:bg-slate-700"
                 title="Decrease 1 pt"
+                aria-label="Decrease font size by 1 point"
               >
                 ▼
               </button>
             </div>
           </div>
+          {!fontSizeResult.ok && (
+            <span id="fontSizeError" role="alert" className="text-xs font-medium text-red-600 dark:text-red-400">
+              {fontSizeResult.message}
+            </span>
+          )}
         </div>
 
         {/* Alignment */}
@@ -273,6 +291,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) =
               key={align}
               type="button"
               onClick={() => handleAlignmentChange(align)}
+              aria-label={`Align ${align}`}
+              aria-pressed={draft.alignment === align}
               className={`rounded px-2 py-1 text-xs capitalize transition-colors ${
                 draft.alignment === align
                   ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-700 dark:text-blue-400'
@@ -297,11 +317,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) =
               value={copiesDraft}
               onChange={(e) => setCopiesDraft(e.target.value)}
               onBlur={(e) => handleCopiesCommit(e.target.value)}
+              aria-invalid={!copiesResult.ok}
+              aria-describedby={copiesResult.ok ? undefined : 'copiesError'}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleCopiesCommit((e.target as HTMLInputElement).value);
                 if (e.key === 'Escape') setCopiesDraft(draft.copies.toString());
               }}
-              className="w-10 px-1 py-1 text-center text-xs text-slate-800 focus:outline-none dark:bg-transparent dark:text-slate-200"
+              className={`w-10 px-1 py-1 text-center text-xs focus:outline-none dark:bg-transparent ${copiesResult.ok ? 'text-slate-800 dark:text-slate-200' : 'text-red-600 dark:text-red-400'}`}
               title="Number of copies (1 - 99)"
             />
             <div className="flex flex-col border-l border-slate-200 dark:border-slate-700">
@@ -310,6 +332,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) =
                 onClick={() => setCopies(Math.min(99, draft.copies + 1))}
                 className="px-1 text-[9px] hover:bg-slate-100 dark:hover:bg-slate-700"
                 title="Increase copies"
+                aria-label="Increase copies by 1"
               >
                 ▲
               </button>
@@ -318,11 +341,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) =
                 onClick={() => setCopies(Math.max(1, draft.copies - 1))}
                 className="px-1 text-[9px] hover:bg-slate-100 dark:hover:bg-slate-700"
                 title="Decrease copies"
+                aria-label="Decrease copies by 1"
               >
                 ▼
               </button>
             </div>
           </div>
+          {!copiesResult.ok && (
+            <span id="copiesError" role="alert" className="text-xs font-medium text-red-600 dark:text-red-400">
+              {copiesResult.message}
+            </span>
+          )}
         </div>
       </div>
 
@@ -333,6 +362,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) =
           onClick={() => openDialog('settings')}
           className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
           title="Printer & App Settings"
+          aria-label="Printer and app settings"
         >
           ⚙️
         </button>

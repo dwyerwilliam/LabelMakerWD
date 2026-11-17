@@ -4,7 +4,8 @@ export type DialogType =
   | 'none'
   | 'settings'
   | 'confirm-clip'
-  | 'confirm-offline'
+  | 'confirm-unavailable'
+  | 'confirm-uncertain'
   | 'confirm-reset';
 
 export interface UIState {
@@ -13,6 +14,10 @@ export interface UIState {
   copiesDraft: string;
   isPrintBusy: boolean;
   printStatusText: string;
+  /** The last job's outcome could not be confirmed; the next print asks the user to check the queue first. */
+  printOutcomeUncertain: boolean;
+  /** A message shown under the toolbar until the user dismisses it (for example, damaged settings). */
+  notice: string | null;
   fontSearchQuery: string;
   fontPickerOpen: boolean;
 
@@ -21,16 +26,22 @@ export interface UIState {
   setFontSizeDraft: (val: string) => void;
   setCopiesDraft: (val: string) => void;
   setPrintBusy: (busy: boolean, statusText?: string) => void;
+  /** Shows a message in the status bar and clears it after `ms`, unless something newer replaced it. */
+  flashPrintStatus: (text: string, ms: number) => void;
+  setPrintOutcomeUncertain: (uncertain: boolean) => void;
+  setNotice: (notice: string | null) => void;
   setFontSearchQuery: (query: string) => void;
   setFontPickerOpen: (open: boolean) => void;
 }
 
-export const useUIStore = create<UIState>((set) => ({
+export const useUIStore = create<UIState>((set, get) => ({
   activeDialog: 'none',
   fontSizeDraft: '24',
   copiesDraft: '1',
   isPrintBusy: false,
   printStatusText: '',
+  printOutcomeUncertain: false,
+  notice: null,
   fontSearchQuery: '',
   fontPickerOpen: false,
 
@@ -40,6 +51,17 @@ export const useUIStore = create<UIState>((set) => ({
   setCopiesDraft: (copiesDraft: string) => set({ copiesDraft }),
   setPrintBusy: (isPrintBusy: boolean, printStatusText = '') =>
     set({ isPrintBusy, printStatusText }),
+  flashPrintStatus: (text: string, ms: number) => {
+    set({ isPrintBusy: false, printStatusText: text });
+    setTimeout(() => {
+      // Only clear our own message: an earlier timer must not wipe a later print's
+      // status or its busy state.
+      const state = get();
+      if (!state.isPrintBusy && state.printStatusText === text) set({ printStatusText: '' });
+    }, ms);
+  },
+  setPrintOutcomeUncertain: (printOutcomeUncertain: boolean) => set({ printOutcomeUncertain }),
+  setNotice: (notice: string | null) => set({ notice }),
   setFontSearchQuery: (fontSearchQuery: string) => set({ fontSearchQuery }),
   setFontPickerOpen: (fontPickerOpen: boolean) => set({ fontPickerOpen }),
 }));

@@ -4,6 +4,7 @@ import {
   MAX_FONT_SIZE_PT,
   MIN_COPIES,
   MAX_COPIES,
+  MAX_LAYOUT_LINES,
 } from './defaults';
 
 export const orientationSchema = z.enum(['portrait', 'landscape']);
@@ -15,7 +16,7 @@ export const fontSizePtSchema = z.number()
   .max(MAX_FONT_SIZE_PT)
   .refine(
     (val) => Math.round(val * 2) === val * 2,
-    { message: 'Font size must be in 0.5 pt increments' }
+    { error: 'Font size must be in 0.5 pt increments' }
   );
 
 export const copiesSchema = z.number()
@@ -70,10 +71,10 @@ export const preferencesV2Schema = z.object({
   profiles: profilesSchema,
 });
 
-export const preferencesUpdateSchema = z.object({
+export const preferencesUpdateSchema = z.strictObject({
   activeProfile: printerProfileSchema.optional(),
   profiles: profilesSchema.optional(),
-}).strict();
+});
 
 export const layoutFingerprintSchema = z.object({
   logicalWidthPt: z.number(),
@@ -85,13 +86,13 @@ export const layoutFingerprintSchema = z.object({
       width: z.number(),
       height: z.number(),
     })
-  ),
-  lineTextOffsets: z.array(z.number()),
+  ).max(MAX_LAYOUT_LINES),
+  lineTextOffsets: z.array(z.number()).max(MAX_LAYOUT_LINES),
   overflow: z.boolean(),
 });
 
 export const printSnapshotSchema = z.object({
-  requestId: z.string().uuid(),
+  requestId: z.uuid(),
   draftRevision: z.number().int().nonnegative(),
   text: labelTextSchema,
   profile: printerProfileSchema,
@@ -109,7 +110,27 @@ export const preparePrintPayloadSchema = z.object({
 
 export const labelHasTextSchema = z.boolean();
 
+export const selectPrinterPayloadSchema = z.object({
+  profile: printerProfileSchema,
+  deviceName: z.string().min(1).max(512),
+  manualConfirm: z.boolean().optional(),
+});
+
+export const cancelPrintPayloadSchema = z.object({
+  token: z.string().min(1).max(256),
+});
+
+export const printStatusPayloadSchema = z.object({
+  requestId: z.uuid(),
+});
+
+/** What the hidden print window reports once it has laid out a label. */
+export const printWindowReadyPayloadSchema = z.object({
+  requestId: z.uuid(),
+  fingerprint: layoutFingerprintSchema,
+});
+
 export const confirmPrintPayloadSchema = z.object({
   token: z.string().min(1),
-  requestId: z.string().uuid(),
+  requestId: z.uuid(),
 });
