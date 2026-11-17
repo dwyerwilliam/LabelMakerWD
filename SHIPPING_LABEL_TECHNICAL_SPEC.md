@@ -1,6 +1,7 @@
 # Label Maker — Shipping Label Mode: Technical Specification
 
 - **Version:** v1 draft · November 17, 2026
+- **Status:** Implemented, phases 0–9 (November 17, 2026). All acceptance items except S20 have automated tests. S20 (physical) partly done: the owner printed a real eBay label on the SP410 and it looked right; barcode scanning and measuring are still to be recorded.
 - **Functional baseline:** [SHIPPING_LABEL_FUNCTIONAL_SPEC.md](SHIPPING_LABEL_FUNCTIONAL_SPEC.md). Section references like "FS §4.6" point there.
 - **Architecture baseline:** [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md). Its process boundaries, IPC security, error model, and print protocol all still apply.
 

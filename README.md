@@ -6,9 +6,9 @@
 [![Latest release](https://img.shields.io/github/v/release/dwyerwilliam/LabelMakerWD?label=latest)](https://github.com/dwyerwilliam/LabelMakerWD/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-A single-window desktop application for editing and direct thermal printing of 4 × 6 labels to the **iDPRT SP410** family and fixed-landscape 2 × 1 labels to the **iDPRT SP310** using DYMO 30334 stock over USB.
+A single-window desktop application for editing and direct thermal printing of 4 × 6 labels to the **iDPRT SP410** family and fixed-landscape 2 × 1 labels to the **iDPRT SP310** using DYMO 30334 stock over USB. On the 4 × 6 printer it also prints **shipping labels** (eBay, USPS, UPS, FedEx and similar) from a screen snip or a PDF.
 
-Based on [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md) and [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md).
+Based on [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md) and [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md); shipping labels on [SHIPPING_LABEL_FUNCTIONAL_SPEC.md](SHIPPING_LABEL_FUNCTIONAL_SPEC.md) and [SHIPPING_LABEL_TECHNICAL_SPEC.md](SHIPPING_LABEL_TECHNICAL_SPEC.md).
 
 <br clear="right">
 
@@ -43,6 +43,21 @@ The editor shown with example labels and simulated printer status:
 
 ![2 by 1 label editor](docs/images/label-2x1.png)
 
+## Shipping labels (4 × 6)
+
+On the **4 × 6** tab, switch from **Text** to **Shipping label**. Then give it the label in any of these ways:
+
+- **Paste a screen snip:** take a snip (Windows: Win+Shift+S; macOS: Cmd+Ctrl+Shift+4) and press **Ctrl+V** (⌘V), or click **Paste**. The app trims the white margins and the gray PDF-viewer background, and turns a sideways snip upright.
+- **Drop or open a PDF or image:** drag the file onto the window, or use **Open file…** (PDF, PNG, JPEG, GIF, BMP, WebP). A PDF page that is already 4 × 6 goes straight to the preview.
+- For a letter-size PDF (eBay's label with a packing slip, a UPS or FedEx page with instructions), **Choose the label area** opens with a box around the label it found. Adjust the box if needed, then press **Use this area** (or Enter). It reads the PDF's text to turn a sideways label upright, and remembers the area you chose for that page size.
+
+The preview shows exactly what prints: the label at true size on 4 × 6 stock, in pure black and white at the printer's 203 dpi. **Darkness** (1–5) makes text and bars thicker or thinner; **Rotate** and **Adjust crop…** fix anything the app guessed wrong. Pasting an image while typing in Text mode, or dropping a label on the 2 × 1 tab, switches to Shipping label mode on its own.
+
+Tips:
+
+- A PDF gives the sharpest barcodes. If you snip, zoom the PDF to about 200% first: the app warns when a snip is under 150 dpi, because its barcodes may not scan.
+- Labels contain names and addresses. Label Maker never saves label images or PDFs to disk, and closing the window asks before it discards a loaded label. It remembers only the crop area per page size, which **Settings → Shipping labels** can forget.
+
 ## Downloads
 
 - [Latest release](https://github.com/dwyerwilliam/LabelMakerWD/releases/latest)
@@ -65,6 +80,7 @@ To make a release, update the version in `package.json` and `package-lock.json`,
 - **UI:** React 19, strict TypeScript, Zustand 5
 - **Build:** Vite + `vite-plugin-electron`
 - **Styling:** Tailwind CSS for application chrome, isolated plain CSS (`label.css`) for physical geometry and printing
+- **PDF rendering:** pdf.js (`pdfjs-dist`), run in the renderer with its own worker; no PDF is ever parsed in the main process
 - **Testing:** Vitest for pure logic & contract schemas, Playwright for browser UI & real Electron tests
 
 ## Features
@@ -76,6 +92,7 @@ To make a release, update the version in `package.json` and `package-lock.json`,
 - **Local Font Discovery:** Lists the fonts installed on the computer (Chromium's Local Font Access API) with search. A saved font that is no longer installed is replaced by Arial or the platform default, with a notice above the label naming both fonts; your choice is kept for when the font returns.
 - **Print Safety:** Print is disabled for an empty label, an invalid size or copies value, a missing printer or while a job is being sent (the shortcut obeys the same rules). Clipped text, and a printer that is offline, paused or in error, each need an explicit confirmation naming the profile. If the operating system never answers, the outcome is reported as unconfirmed and nothing is retried.
 - **Direct USB Printer Profiles:** Automatically recognizes SP410/SP410BT and SP310 queues, assigns them to the matching size profile, and provides profile-specific confirmation for renamed queues.
+- **Shipping Labels:** Print a received 4 × 6 shipping label from a screen snip or PDF on the SP410: border trimming, label detection on letter pages with a crop dialog, text-based turning of sideways labels, true-size fit, black-and-white conversion with a darkness control, and remembered crop areas.
 - **Atomic Settings Persistence:** Versioned atomic writes to Electron's per-user `userData/settings.json`, including migration from the original SP410-only preferences. A damaged file is saved as `settings.json.corrupt.<time>`, valid values are kept, and a notice says what was reset.
 
 ## Quick Start
@@ -108,6 +125,7 @@ npm run test:electron  # the real app: IPC, settings, close prompt, fonts, navig
 npm run test:packaged  # starts the packaged app (run npm run package:win or package:mac first)
 ```
 
+- The shipping-label tests use synthetic fixture PDFs in `tests/fixtures/shipping/` (made by `npm run fixtures:shipping`; none is a real label). Real labels dropped into the project folder for manual testing are git-ignored.
 - `test:ui` needs a Chromium for Playwright: run `npx playwright install chromium`, or point `PLAYWRIGHT_CHROMIUM_EXECUTABLE` at an installed Chromium or Chrome.
 - `test:electron` runs against the built app, so run `npm run build:app` first. It uses a throwaway settings folder (the `LABELMAKER_USER_DATA_DIR` environment variable, ignored by packaged builds), so it never touches your real settings and works while Label Maker is open.
 - `npm run build:native` builds the printer-inspection helper; with `CI=true` or `REQUIRE_NATIVE=1` a failed build stops instead of falling back.
@@ -120,7 +138,8 @@ Continuous integration (`.github/workflows/ci.yml`) runs all of the above except
 - Printing has only been verified on Windows 11 with an SP410 and an SP310. macOS is experimental.
 - The app cannot tell whether paper came out, only whether the operating system accepted the job.
 - Each printer prints on one fixed stock: 4 × 6 inches for the SP410 and 2.25 × 1.25 inches for the SP310. There is no paper selection, and the app does not check the driver's media settings (the SP310 driver's default paper is not DYMO 30334; the app sends its own page size).
-- No saved labels, images, barcodes, templates, other label sizes, Bluetooth or network printing (see the specification's exclusions).
+- No saved labels, image or barcode editing, templates, other label sizes, Bluetooth or network printing (see the specification's exclusions). Shipping labels are printed as received.
+- Shipping labels: one label per print (a PDF page with two labels needs two crops), no password-protected PDFs, and only the 4 × 6 printer. Label detection is tuned on eBay letter pages and synthetic samples; other layouts may need the crop adjusted by hand.
 
 ## License
 

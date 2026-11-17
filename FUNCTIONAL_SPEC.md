@@ -26,6 +26,7 @@ Included:
 - SP410-family queue discovery, including SP410BT used over USB.
 - SP310 queue discovery used over USB.
 - Plain multiline text; one family and point size for the whole label.
+- Shipping labels on the 4 × 6 profile: a received label from a screen snip or PDF, printed as a black-and-white image. Specified separately in [SHIPPING_LABEL_FUNCTIONAL_SPEC.md](SHIPPING_LABEL_FUNCTIONAL_SPEC.md).
 - Portrait and landscape layout for 4 × 6; fixed landscape layout for 2 × 1.
 - Left, center, and right alignment; vertical centering when text fits.
 - One to 99 identical copies per print action.
@@ -36,7 +37,7 @@ Alignment and copies retain the original draft's proposed controls; they are dra
 Excluded:
 
 - All printers and stock sizes other than the two supported profiles.
-- Images, barcodes, QR codes, shapes, borders, colors, and mixed formatting.
+- Images, barcodes, QR codes, shapes, borders, colors, and mixed formatting in the text label. (The 4 × 6 Shipping label mode prints a received label image as is; it does not create or edit images or barcodes.)
 - Bold/italic controls, multiple text boxes, free positioning, adjustable margins.
 - Saved labels, templates, reopening previous text, history, CSV, batch merging.
 - Bluetooth/network printing, direct printer commands, driver installation, calibration controls.
@@ -167,7 +168,7 @@ An installed queue can remain when USB is unplugged. Use reliable OS status info
 ## 5. Editing and layout
 
 - Click the label to type; Enter inserts a newline.
-- Paste plain text only. Strip formatting and embedded objects; preserve text and line breaks. Normalize newline conventions; convert each tab to four spaces.
+- Paste plain text only. Strip formatting and embedded objects; preserve text and line breaks. Normalize newline conventions; convert each tab to four spaces. On the 4 × 6 tab, a paste that holds an image and no text switches to Shipping label mode instead ([SHIPPING_LABEL_FUNCTIONAL_SPEC.md](SHIPPING_LABEL_FUNCTIONAL_SPEC.md) §4.3).
 - Preserve repeated spaces and deliberate blank lines. Wrap between words; break an overlong word within the word.
 - Apply font, size, and alignment to the entire label regardless of selection.
 - Use line spacing of 1.2 times font size, with no extra paragraph spacing.

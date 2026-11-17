@@ -2,6 +2,7 @@
 
 - **Version:** v1 draft · November 17, 2026
 - **Applies to:** the **4 × 6** profile (iDPRT SP410 family) only
+- **Status:** Implemented, phases 0–9 (November 17, 2026). All acceptance items except S20 have automated tests. S20 (physical) partly done: the owner printed a real eBay label on the SP410 and it looked right; barcode scanning and measuring are still to be recorded.
 - **Companion:** [SHIPPING_LABEL_TECHNICAL_SPEC.md](SHIPPING_LABEL_TECHNICAL_SPEC.md) (how to build it)
 - **Baseline:** [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md). Everything there still applies unless this document says otherwise.
 
