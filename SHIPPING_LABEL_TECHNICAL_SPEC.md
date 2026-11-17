@@ -119,7 +119,7 @@ In `package.json` scripts, change:
 "build:app": "node scripts/copy-pdfjs-assets.mjs && tsc --noEmit && vite build",
 ```
 
-Add `public/pdfjs/` to `.gitignore` under "Build output".
+Add `public/pdfjs/` to `.gitignore` under "Build output", and `'public/pdfjs/**'` to the `ignores` list in `eslint.config.js` (they are vendor files). Both were done in Phase 0.
 
 Vite copies `public/` into `dist/`, and the `labelmaker://app/` protocol already serves everything in `dist/`. So the files are reachable at `labelmaker://app/pdfjs/standard_fonts/` in the packaged app and at `/pdfjs/standard_fonts/` in dev.
 
@@ -659,10 +659,23 @@ export async function loadPdf(bytes: Uint8Array): Promise<PdfHandle>;
 Implementation requirements:
 
 1. `const pdfjs = await import('pdfjs-dist');` then, once per session, `pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;`.
-2. Call `pdfjs.getDocument({ data: bytes, isEvalSupported: false, disableAutoFetch: true, disableStream: true, standardFontDataUrl: new URL('pdfjs/standard_fonts/', document.baseURI).href })`. Check the installed types for the option names. If the version has a `wasmUrl` option, pass `new URL('pdfjs/wasm/', document.baseURI).href`.
-3. Await `.promise`. Map errors by `error.name`: `'PasswordException'` → `PdfLoadError('password', …)`; anything else → `PdfLoadError('invalid', …)`. If `numPages === 0` → `PdfLoadError('empty', …)`.
+2. Create the loading task and **keep it**. In pdf.js 6 the task, not the document, is what you destroy:
+
+   ```ts
+   const task = pdfjs.getDocument({
+     data: bytes,
+     disableAutoFetch: true,
+     disableStream: true,
+     standardFontDataUrl: new URL('pdfjs/standard_fonts/', document.baseURI).href,
+     wasmUrl: new URL('pdfjs/wasm/', document.baseURI).href,
+   });
+   const doc = await task.promise;
+   ```
+
+   pdf.js 6 has no `isEvalSupported` option (it never uses eval). Don't pass it.
+3. Map errors by `error.name`: `'PasswordException'` → `PdfLoadError('password', …)` (verified in Phase 0 with `encrypted.pdf`); anything else → `PdfLoadError('invalid', …)`. If `doc.numPages === 0` → `PdfLoadError('empty', …)`. Also call `task.destroy()` on every error path.
 4. `pageSizePt(i)`: `const page = await doc.getPage(i + 1); const vp = page.getViewport({ scale: 1 }); return { width: vp.width, height: vp.height };`
-5. `renderPage(i, dpi)`: viewport at `scale = dpi / 72`; canvas `Math.ceil(vp.width) × Math.ceil(vp.height)`; fill white; render; return the canvas.
+5. `renderPage(i, dpi)`: viewport at `scale = dpi / 72`; canvas `Math.ceil(vp.width) × Math.ceil(vp.height)`; `page.render({ canvas, viewport: vp })`; return the canvas.
 6. `renderRegion(i, crop, outW, outH)`:
 
    ```ts
@@ -672,10 +685,8 @@ Implementation requirements:
    const vp = page.getViewport({ scale });
    const canvas = document.createElement('canvas');
    canvas.width = outW; canvas.height = outH;
-   const ctx = canvas.getContext('2d')!;
-   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, outW, outH);
    await page.render({
-     canvasContext: ctx,        // check installed types: newer versions also want `canvas`
+     canvas,                    // pdf.js 6: pass `canvas`, not `canvasContext`; the background defaults to white
      viewport: vp,
      transform: [1, 0, 0, 1, -crop.x * vp.width, -crop.y * vp.height],
    }).promise;
@@ -683,7 +694,7 @@ Implementation requirements:
    return canvas;
    ```
 
-7. `destroy()` calls `doc.destroy()`.
+7. `destroy()` calls `task.destroy()`. `PDFDocumentProxy` has no `destroy()` in pdf.js 6.
 8. Never keep a copy of `bytes` after `getDocument` resolves, and never log it.
 
 ### 7.3 `imageSource.ts`
@@ -1323,7 +1334,7 @@ worker-src 'self' labelmaker:;
 
 - `data:` is needed by the print page's `<img>` and `blob:` by the preview and the crop dialog.
 - `worker-src` covers the pdf.js worker.
-- Do **not** add `'unsafe-eval'`. `isEvalSupported: false` makes pdf.js work without it.
+- Do **not** add `'unsafe-eval'`. pdf.js 6 never uses eval (verified in Phase 0).
 - If, and only if, the Phase 0 spike shows pdf.js needs WebAssembly for a real label PDF, add `'wasm-unsafe-eval'` to `script-src` in `index.html` only, and write down why in §16.
 
 The dev server strips the CSP (see `vite.config.ts`), so CSP problems only show up in `npm run test:electron` and the packaged app. That is why Phase 0 and Phase 7 include Electron checks.
@@ -1438,10 +1449,15 @@ Each phase ends with the checks in rule 0.2 and a local commit (rule 0.3).
 
 | Item | Value |
 | --- | --- |
-| `pdfjs-dist` version | _(fill in)_ |
-| Worker file used | _(fill in)_ |
-| CSP additions beyond §13.1 (with reason) | _(none, or fill in)_ |
-| `standard_fonts` needed by any fixture or real label? | _(yes/no)_ |
+| `pdfjs-dist` version | **6.5.438** (exact pin; engines `>=22.13.0 \|\| >=24`) |
+| `pdf-lib` version (dev only) | **1.17.1** |
+| Worker file used | `pdfjs-dist/build/pdf.worker.min.mjs?url`, emitted as `dist/assets/pdf.worker.min-<hash>.mjs` |
+| pdf.js 6 API differences from older docs | No `isEvalSupported` option. `page.render` takes `canvas` (`canvasContext` is deprecated). `PDFDocumentProxy` has no `destroy()`; call `loadingTask.destroy()`. Wrong password throws `name === 'PasswordException'`. |
+| CSP additions beyond §13.1 (with reason) | None. Phase 0 (Nov 17, 2026): `ebay-letter`, `label-4x6`, `two-page`, and `encrypted` fixtures loaded in the built Electron app with zero console messages. |
+| WebAssembly (`'wasm-unsafe-eval'`) | Not added. The wasm path (JBIG2/JPX image decoders) is untested because no fixture contains such images. `public/pdfjs/wasm/` includes pdf.js's non-wasm JS fallbacks. If a real label PDF fails to render its barcode image, test that first. |
+| `standard_fonts` needed by any fixture or real label? | Fixtures embed Helvetica via pdf-lib, so they don't exercise it. The folder is copied and the URL is set anyway. |
+| Rendering check | A 4 × 6 page at scale 203/72 renders to exactly 812 × 1218 px. |
+| UI tests on this machine | The installed `@playwright/test` wants browser build 1255, which isn't downloaded. Either run `npx playwright install chromium` or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to an installed Chrome. |
 | Physical test (S20): OS, driver, app version, result | _(owner)_ |
 
 ---
