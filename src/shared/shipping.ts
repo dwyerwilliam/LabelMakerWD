@@ -110,3 +110,32 @@ export function bytesToBase64(bytes: Uint8Array): string {
   }
   return btoa(binary);
 }
+
+/**
+ * Turn applied to a sideways (wide) label when nothing says which way is up. Real eBay labels
+ * on letter paper are printed with their top toward the right of the page, which needs a
+ * counter-clockwise quarter turn (270° clockwise).
+ */
+export const DEFAULT_SIDEWAYS_ROTATION: Rotation = 270;
+
+/**
+ * Picks the output rotation for a crop of w × h (any units).
+ * `textUpright` is the turn that makes the crop's text upright (from the PDF's text), or null.
+ * A wide crop always gets a quarter turn so it fills the portrait stock; a tall one stays upright
+ * unless its text is upside down.
+ */
+export function chooseRotation(
+  w: number,
+  h: number,
+  textUpright: Rotation | null,
+  sidewaysDefault: Rotation = DEFAULT_SIDEWAYS_ROTATION
+): Rotation {
+  if (w > 1.1 * h) {
+    if (textUpright === 90 || textUpright === 270) return textUpright;
+    // Horizontal text in a wide label: either quarter turn fills the stock. Upright text gets the
+    // default (270); upside-down text gets 90, which leaves its lines running the same way.
+    if (textUpright === 180) return 90;
+    return sidewaysDefault;
+  }
+  return textUpright === 180 ? 180 : 0;
+}

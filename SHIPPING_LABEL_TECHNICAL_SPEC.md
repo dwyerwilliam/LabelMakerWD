@@ -923,6 +923,12 @@ export function findRememberedCrop(size): RememberedCrop | null;
 3. **Errors go where they are visible.** In Shipping label mode, they go to `uiStore.shippingMessage` (shown by the shipping view). In Text mode, where that view isn't mounted, they go to the notice bar (`uiStore.setNotice`).
 4. **Suggestions for dialog page changes and Auto-detect** use `suggestCropForPdf`. On a page change, call it with `{ useRemembered: true, scanAhead: false }`; for Auto-detect, `{ useRemembered: false, scanAhead: false }`.
 
+5. **Rotation follows the PDF's text (changed after testing real eBay labels).** The original "wide crop → 90° clockwise" turned both real eBay labels upside down: eBay prints the label sideways with its top toward the page's right. Now:
+   - `PdfHandle.textUprightRotation(pageIndex, crop)` reads `page.getTextContent()` and maps each item's matrix to display space with `pdfjs.Util.transform(viewport.transform, item.transform)`. It snaps the baseline angle to a quarter turn and weights it by character count, counting only items whose origin is inside the crop. It returns the turn that makes the dominant direction upright, or null when there are fewer than 10 characters or no direction has 60%.
+   - `chooseRotation(w, h, textUpright, sidewaysDefault = DEFAULT_SIDEWAYS_ROTATION /* 270 */)` in `shared/shipping.ts` decides. A wide crop (w > 1.1 h) gets the text's quarter turn if it is sideways, 90 if the text is upside down, else the default. A tall crop gets 180 if the text is upside down, else 0.
+   - It is used for detected crops, the content-area fallback, and the 4 × 6-page shortcut. Remembered crops keep their saved rotation. Snips and image files call it with `sidewaysDefault = 90` (unchanged behavior) until the product owner says how snips are usually taken.
+   - Fixtures `sideways-down-letter.pdf` (eBay layout → 270) and `sideways-up-letter.pdf` (→ 90) carry a marker in the label's own top-left corner. The pipeline tests check that it lands top-left in the output.
+
 Unchanged from the draft: the load and process sequence counters (the newest wins); the 4 × 6-page shortcut; the remembered-crop lookup (±2 pt) and save on accept (PDFs only, most recent first, max 8); the blank-label message; `bumpRevision()` on every commit and on `clear()`; and releasing PDFs, bitmaps and object URLs whenever they are replaced.
 
 ---
@@ -1425,6 +1431,7 @@ Each phase ends with the checks in rule 0.2 and a local commit (rule 0.3).
 | WebAssembly (`'wasm-unsafe-eval'`) | Not added. The wasm path (JBIG2/JPX image decoders) is untested because no fixture contains such images. `public/pdfjs/wasm/` includes pdf.js's non-wasm JS fallbacks. If a real label PDF fails to render its barcode image, test that first. |
 | `standard_fonts` needed by any fixture or real label? | Fixtures embed Helvetica via pdf-lib, so they don't exercise it. The folder is copied and the URL is set anyway. |
 | Electron clipboard API | Electron 45 has no `clipboard.readImage()`. Use `await clipboard.read()` and `item.getType('image/png')`. A Windows bitmap (CF_DIB, what Win+Shift+S leaves) is offered as `image/png`: verified in Phase 3 with .NET `Clipboard.SetImage`. |
+| Real eBay labels (Nov 17, 2026) | Two real eBay USPS labels (letter page, label sideways in a 6 × 4 area at the top, no packing slip): detection cropped both exactly and they print at 100%. They came out upside down with the clockwise default, which led to the text-direction rule (§9.3, change 5). The real PDFs are git-ignored (`/*.pdf`) and never committed. |
 | Rendering check | A 4 × 6 page at scale 203/72 renders to exactly 812 × 1218 px. |
 | UI tests on this machine | The installed `@playwright/test` wants browser build 1255, which isn't downloaded. Either run `npx playwright install chromium` or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to an installed Chrome. |
 | Physical test (S20): OS, driver, app version, result | _(owner)_ |

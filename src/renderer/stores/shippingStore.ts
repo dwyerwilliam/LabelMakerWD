@@ -9,6 +9,7 @@
 import { create } from 'zustand';
 import {
   addRotation,
+  chooseRotation,
   FOUR_BY_SIX_PAGE_TOLERANCE_IN,
   MAX_REMEMBERED_CROPS,
   MAX_SOURCE_FILE_BYTES,
@@ -191,20 +192,19 @@ export async function suggestCropForPdf(
     if (i === pageIndex) firstGray = gray;
     const rect = detectLabelRegion(gray, ANALYSIS_DPI);
     if (rect) {
+      const crop = pxRectToFrac(rect, gray.width, gray.height);
       return {
-        choice: {
-          pageIndex: i,
-          crop: pxRectToFrac(rect, gray.width, gray.height),
-          rotation: rect.width > 1.1 * rect.height ? 90 : 0,
-        },
+        choice: { pageIndex: i, crop, rotation: chooseRotation(rect.width, rect.height, await pdf.textUprightRotation(i, crop)) },
         status: i === pageIndex ? null : MESSAGES.foundOnPage(i + 1),
       };
     }
   }
 
   const gray = firstGray!;
+  const area = contentArea(gray, ANALYSIS_DPI);
+  const crop = pxRectToFrac(area, gray.width, gray.height);
   return {
-    choice: { pageIndex, crop: pxRectToFrac(contentArea(gray, ANALYSIS_DPI), gray.width, gray.height), rotation: 0 },
+    choice: { pageIndex, crop, rotation: chooseRotation(area.width, area.height, await pdf.textUprightRotation(pageIndex, crop)) },
     status: MESSAGES.notFound,
   };
 }
@@ -287,7 +287,8 @@ export const useShippingStore = create<ShippingState>((set, get) => {
           const choice: CropChoice = {
             pageIndex: 0,
             crop: pxRectToFrac(r, loaded.width, loaded.height),
-            rotation: r.width > 1.1 * r.height ? 90 : 0,
+            // Snips keep the clockwise default until it is known how they are usually taken.
+            rotation: chooseRotation(r.width, r.height, null, 90),
           };
           ensureShippingMode();
           await process(created, choice);
@@ -314,10 +315,11 @@ export const useShippingStore = create<ShippingState>((set, get) => {
         const size = await pdf.pageSizePt(0);
         if (isFourBySixPage(size)) {
           ensureShippingMode();
+          const whole = { x: 0, y: 0, width: 1, height: 1 };
           await process(created, {
             pageIndex: 0,
-            crop: { x: 0, y: 0, width: 1, height: 1 },
-            rotation: size.width > size.height ? 90 : 0,
+            crop: whole,
+            rotation: chooseRotation(size.width, size.height, await pdf.textUprightRotation(0, whole)),
           });
           return discardIfUnused(created);
         }

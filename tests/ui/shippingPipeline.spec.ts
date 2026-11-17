@@ -136,11 +136,11 @@ test('a 4 × 6 PDF goes straight to an actual-size 812 × 1218 label with no dia
   expect(px!.black).toBeGreaterThan(5000);
 });
 
-test('a 6 × 4 PDF is turned to portrait', async ({ page }) => {
+test('a 6 × 4 PDF is turned to portrait (counter-clockwise by default)', async ({ page }) => {
   await loadFixture(page, 'label-6x4.pdf');
   const s = await state(page);
   expect(s.dialog).toBeNull();
-  expect(s.choice!.rotation).toBe(90);
+  expect(s.choice!.rotation).toBe(270); // upright text in a wide label: the counter-clockwise default
   expect(s.processed).toMatchObject({ scalePercent: 100, offAspect: false });
   expect(await page.evaluate(() => (window as any).__shipPixels())).toMatchObject({ width: 812, height: 1218 });
 });
@@ -198,7 +198,7 @@ test('a sideways UPS-style label is detected above the fold line and turned to p
   const s = await state(page);
   const c = s.dialog!.initial.crop;
   expect(c.y + c.height).toBeLessThan(0.5); // the fold line is at half height
-  expect(s.dialog!.initial.rotation).toBe(90);
+  expect(s.dialog!.initial.rotation).toBe(270); // horizontal text: the counter-clockwise default
 });
 
 test('a label on page 2 is found when page 1 has none', async ({ page }) => {
@@ -330,3 +330,25 @@ test('the newest load wins when two overlap', async ({ page }) => {
   expect(s.processed!.caption).toBe('From label-4x6.pdf, page 1 · actual size');
   expect(s.choice!.rotation).toBe(0);
 });
+
+for (const [name, rotation] of [
+  ['sideways-down-letter.pdf', 270], // eBay layout: text reads downward, label top toward the page's right
+  ['sideways-up-letter.pdf', 90], //    the opposite: proves the turn follows the text, not the default
+] as const) {
+  test(`a sideways label (${name}) is turned so its text is upright`, async ({ page }) => {
+    await loadFixture(page, name);
+    let s = await state(page);
+    expect(s.dialog!.initial.rotation).toBe(rotation);
+    await page.evaluate(async () => {
+      const w = window as any;
+      const { cropDialog, acceptCrop } = w.__ship.store.getState();
+      await acceptCrop(cropDialog.initial);
+      await w.__shipIdle();
+    });
+    s = await state(page);
+    expect(s.processed!.scalePercent).toBeGreaterThanOrEqual(97);
+    // The marker printed in the label's own top-left corner ends up top-left on the output.
+    const px = await page.evaluate(() => (window as any).__shipPixels([[70, 70], [740, 1150], [740, 70], [70, 1150]]));
+    expect(px!.at).toEqual([0, 255, 255, 255]);
+  });
+}

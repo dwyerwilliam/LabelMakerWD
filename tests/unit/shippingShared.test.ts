@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   addRotation,
   bytesToBase64,
+  chooseRotation,
+  DEFAULT_SIDEWAYS_ROTATION,
   clampFracRect,
   fitToLabel,
   isOffAspect,
@@ -120,5 +122,27 @@ describe('bytesToBase64', () => {
       const bytes = new Uint8Array(length).map((_, i) => (i * 31 + 7) & 0xff);
       expect(bytesToBase64(bytes)).toBe(Buffer.from(bytes).toString('base64'));
     }
+  });
+});
+
+describe('chooseRotation', () => {
+  it('turns a wide label the way its text says', () => {
+    expect(chooseRotation(6, 4, 270)).toBe(270); // eBay: text reads downward
+    expect(chooseRotation(6, 4, 90)).toBe(90); //   text reads upward
+  });
+
+  it('uses the counter-clockwise default for a wide label without sideways text', () => {
+    expect(DEFAULT_SIDEWAYS_ROTATION).toBe(270);
+    expect(chooseRotation(6, 4, null)).toBe(270);
+    expect(chooseRotation(6, 4, 0)).toBe(270);
+    expect(chooseRotation(6, 4, 180)).toBe(90);
+    expect(chooseRotation(6, 4, null, 90)).toBe(90); // a caller-chosen default (snips)
+  });
+
+  it('keeps a tall label upright unless its text is upside down', () => {
+    expect(chooseRotation(4, 6, null)).toBe(0);
+    expect(chooseRotation(4, 6, 90)).toBe(0); // sideways text in a tall label would shrink it: ignored
+    expect(chooseRotation(4, 6, 180)).toBe(180);
+    expect(chooseRotation(4.2, 4, null)).toBe(0); // not clearly wide
   });
 });

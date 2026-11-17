@@ -127,12 +127,12 @@ Paste, drop, and Open file are ignored while any dialog is open, and while a pri
 
 1. Decode the image.
 2. **Trim the border automatically.** Remove outer bands of uniform color: white margins and the gray background of a PDF viewer around the page. Stop at the first band that has content or is near-black (so a label's black border is kept).
-3. **Auto-rotate**: if the trimmed area is clearly wider than tall (width > 1.1 × height), rotate it 90° clockwise to portrait.
+3. **Auto-rotate**: if the trimmed area is clearly wider than tall (width > 1.1 × height), rotate it a quarter turn to portrait. An image has no text the app can read, so the direction is a default (currently clockwise, pending a decision on how snips are usually taken).
 4. Fit to 4 × 6 and convert to black and white (§4.7). Show the preview. **No dialog** opens. The user trusted the snip boundary; **Adjust crop…** is there if needed.
 
 **B. PDF whose page is already 4 × 6** (within 0.15 in, either orientation):
 
-1. Use the whole page. Rotate 90° clockwise when the page is 6 × 4.
+1. Use the whole page. A 6 × 4 page is turned to portrait the way its text says (see **Turning a sideways label upright** below).
 2. Fit, convert, preview. **No dialog** opens. **Adjust crop…** is available.
 
 **C. Any other PDF** (letter, A4, …):
@@ -144,6 +144,8 @@ Paste, drop, and Open file are ignored while any dialog is open, and while a pri
 2. Open the **crop dialog** (§4.6) with the suggestion. Nothing prints until the user presses **Use this area**.
 3. On **Use this area**, process (§4.7), show the preview, and remember the crop for this page size.
 4. On **Cancel**: if there was no image before, return to the empty state; otherwise keep the previous image.
+
+**Turning a sideways label upright (PDFs).** The app reads the direction of the PDF's own text inside the crop and turns the label so that text is upright. eBay prints its labels sideways on a letter page with the label's top toward the right. Checked on two real eBay labels (November 17, 2026), that needs a counter-clockwise quarter turn, and it is what the app now does. A wide crop always gets a quarter turn, so it fills the portrait stock. A tall crop stays upright unless its text is upside down. With no readable text (a PDF that is only a picture), a wide crop is turned counter-clockwise. **Rotate left / Rotate right** correct any case.
 
 ### 4.6 Crop dialog
 

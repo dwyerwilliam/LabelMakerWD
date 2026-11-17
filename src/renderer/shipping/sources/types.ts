@@ -8,6 +8,11 @@ export interface PdfHandle {
   renderPage(pageIndex: number, dpi: number): Promise<HTMLCanvasElement>;
   /** Renders `crop` of the page onto a new canvas of exactly outW × outH pixels (white background). */
   renderRegion(pageIndex: number, crop: FracRect, outW: number, outH: number): Promise<HTMLCanvasElement>;
+  /**
+   * The clockwise turn that makes the text inside `crop` upright, read from the PDF's own text
+   * (null when there is too little text, or no clear direction, e.g. a PDF that is only a picture).
+   */
+  textUprightRotation(pageIndex: number, crop: FracRect): Promise<Rotation | null>;
   destroy(): Promise<void>;
 }
 

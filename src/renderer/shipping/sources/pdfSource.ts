@@ -2,7 +2,7 @@
 // pdf.js itself is loaded lazily so text-only users never pay for it at startup.
 // Label PDFs contain names and addresses: never log their bytes or contents.
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import type { FracRect } from '@shared/shipping';
+import type { FracRect, Rotation } from '@shared/shipping';
 import type { PdfHandle } from './types';
 
 export class PdfLoadError extends Error {
@@ -14,6 +14,10 @@ export class PdfLoadError extends Error {
 
 type PdfJs = typeof import('pdfjs-dist');
 let pdfjsPromise: Promise<PdfJs> | null = null;
+
+/** Text needed inside a crop before its direction is trusted, and how dominant one direction must be. */
+const MIN_TEXT_CHARS = 10;
+const DOMINANT_SHARE = 0.6;
 
 function loadPdfJs(): Promise<PdfJs> {
   pdfjsPromise ??= import('pdfjs-dist').then((pdfjs) => {
@@ -96,6 +100,30 @@ export async function loadPdf(bytes: Uint8Array): Promise<PdfHandle> {
       }).promise;
       page.cleanup();
       return canvas;
+    },
+
+    async textUprightRotation(pageIndex, crop) {
+      const page = await getPage(pageIndex);
+      const vp = page.getViewport({ scale: 1 });
+      const content = await page.getTextContent();
+      // Characters per text direction, in display space (y down): 0 = left-to-right, 90 = reading
+      // downward, 180 = upside down, 270 = reading upward.
+      const weights = [0, 0, 0, 0];
+      for (const item of content.items) {
+        if (!('str' in item) || item.str.trim() === '') continue;
+        const m = pdfjs.Util.transform(vp.transform, item.transform) as number[];
+        const x = m[4] / vp.width;
+        const y = m[5] / vp.height;
+        if (x < crop.x || x > crop.x + crop.width || y < crop.y || y > crop.y + crop.height) continue;
+        const angle = (Math.atan2(m[1], m[0]) * 180) / Math.PI;
+        weights[(((Math.round(angle / 90)) % 4) + 4) % 4] += item.str.trim().length;
+      }
+      page.cleanup();
+      const total = weights.reduce((a, b) => a + b, 0);
+      const best = weights.indexOf(Math.max(...weights));
+      if (total < MIN_TEXT_CHARS || weights[best] < DOMINANT_SHARE * total) return null;
+      // Text running at `best` quarter turns is made upright by the opposite turn.
+      return (((4 - best) % 4) * 90) as Rotation;
     },
 
     destroy: () => task.destroy(),

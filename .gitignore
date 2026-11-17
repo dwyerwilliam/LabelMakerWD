@@ -40,3 +40,7 @@ Thumbs.db
 # Local env
 .env
 .env.local
+
+# Real shipping labels dropped in for testing hold names and addresses: never commit them.
+# (Synthetic fixtures live in tests/fixtures/shipping/.)
+/*.pdf

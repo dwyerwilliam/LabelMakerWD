@@ -6,7 +6,7 @@
 // convert them to pdf-lib's bottom-left origin.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 
 const outDir = path.resolve(import.meta.dirname, '..', 'tests', 'fixtures', 'shipping');
 mkdirSync(outDir, { recursive: true });
@@ -171,6 +171,37 @@ async function save(doc, name) {
   for (let i = 0; i < 9; i++) h.text('This page has a short wide paragraph and no shipping label on it at all.', 54, 300 + i * 16, 11);
   await save(doc, 'no-label.pdf');
 }
+
+/**
+ * A 6 × 4 region at the top of a letter page holding a portrait label printed sideways, the way
+ * eBay lays its labels out. `reading`: 'down' (eBay: the label's top is toward the page's right)
+ * or 'up' (its top is toward the page's left). A 40 pt black marker sits in the label's own
+ * top-left corner, so a correctly turned label has it top-left.
+ */
+async function sidewaysLetter(name, reading) {
+  const { doc, font } = await newDoc();
+  const page = doc.addPage(LETTER);
+  const h = helpers(page, font);
+  const H = page.getHeight();
+  const [x, y, w, hh] = [90, 40, 432, 288];
+  h.box(x, y, w, hh, { fill: false, border: 1 });
+  const down = reading === 'down';
+  // Marker in the label's top-left: page top-right of the region (down) or bottom-left (up).
+  if (down) h.box(x + w - 50, y + 10, 40, 40);
+  else h.box(x + 10, y + hh - 50, 40, 40);
+  const lines = ['SAMPLE - NOT A REAL LABEL', 'SHIP TO: PAT EXAMPLE', '123 FICTIONAL STREET', 'SAMPLETOWN ZZ 00000', 'TRACKING (FAKE) 0000 0000 0000'];
+  lines.forEach((text, i) => {
+    // Columns step away from the label's top edge.
+    const col = down ? x + w - 80 - i * 40 : x + 80 + i * 40;
+    const start = down ? H - (y + 20) : H - (y + hh - 20);
+    page.drawText(text, { x: col, y: start, size: 12, font, color: BLACK, rotate: degrees(down ? -90 : 90) });
+  });
+  // Bars across the label's width (vertical on the page).
+  for (let i = 0; i < 40; i++) h.box(down ? x + 60 + (i % 2) * 2 : x + w - 90 + (i % 2) * 2, y + 40 + i * 5, 30, 2);
+  await save(doc, name);
+}
+await sidewaysLetter('sideways-down-letter.pdf', 'down');
+await sidewaysLetter('sideways-up-letter.pdf', 'up');
 
 // encrypted.pdf: pdf-lib cannot encrypt, so this is a minimal hand-written PDF whose
 // trailer has a Standard security handler /Encrypt dictionary. Its /U value does not match
