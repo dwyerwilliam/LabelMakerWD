@@ -80,6 +80,8 @@ To make a release, update the version in `package.json` and `package-lock.json`,
 
 ## Quick Start
 
+Needs Node.js 24 or newer (Electron 45 runs Node 24; CI and `.node-version` use 26).
+
 ```bash
 # Install dependencies
 npm install

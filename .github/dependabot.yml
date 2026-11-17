@@ -10,6 +10,14 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # Keep the Node typings on the Node that Electron embeds (Electron 45 has Node 24). Move this
+      # with the Electron major version, not on its own.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      # typescript-eslint does not support TypeScript 7 yet.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
   - package-ecosystem: github-actions
     directory: /
     schedule:

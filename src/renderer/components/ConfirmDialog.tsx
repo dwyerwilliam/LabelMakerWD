@@ -32,7 +32,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       labelledBy={titleId}
       describedBy={messageId}
       onEscape={onCancel}
-      className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl focus:outline-none dark:bg-slate-800"
+      className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl focus:outline-hidden dark:bg-slate-800"
     >
       <h3 id={titleId} className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h3>
       <p id={messageId} className="mt-2 text-sm text-slate-600 dark:text-slate-300">{message}</p>

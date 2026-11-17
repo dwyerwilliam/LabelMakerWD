@@ -65,6 +65,7 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 | LM-052 | P3 | Startup | A failure while starting up was swallowed: no window, no message | Fixed |
 | LM-053 | P1 | CI | The first CI run failed on Windows: two test workers raced to download the Electron binary | Fixed |
 | LM-054 | P2 | CI / Printers | The first CI run failed on macOS: the printer test fixture had no connection data, and the app ignored the macOS device URI | Fixed (macOS untested) |
+| LM-055 | P3 | Deps | Build tools a major version behind (Vite 6, Tailwind 3, plugin-react 4) and Node 22 as the baseline | Fixed |
 
 ## Details
 
@@ -359,6 +360,16 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Fix:** On macOS the CUPS `device-uri` from Electron's printer options now stands in for the port, and `detectTransport` reads its scheme (`usb`, `bluetooth`, `ipp`, `ipps`, `http`, `https`, `socket`, `lpd`, `dnssd`, `mdns`, `smb`). A host name such as `usb-hub.local` inside a network URI is not taken for USB. The printer service tests now run once as `win32` and once as `darwin`.
 **Verified:** the `darwin` run fails when the URI mapping is removed and passes with it; 130 unit tests pass. No Mac was available: that Electron passes the CUPS `device-uri` option through in `options` is assumed from how CUPS destinations are reported, not observed. If the key is absent the behaviour is as before (unknown connection, USB confirmation required).
 
+### LM-055 · P3 · Deps · Fixed
+**Evidence:** Nine Dependabot pull requests opened on the first push (Vite 8, Tailwind 4, plugin-react 6, both electron plugins, @types/node 26, four GitHub Actions). CI, `.node-version` and `engines` were on Node 22, while Electron 45 embeds Node 24.22 and the owner develops on Node 26.
+**Fix (all local, nothing merged on GitHub):**
+- Vite 6 to 8.3.8, `@vitejs/plugin-react` 6.3.0, `vite-plugin-electron` 1.2.0, `vite-plugin-electron-renderer` 1.0.0. The config uses `import.meta.dirname` and `codeSplitting: false`, which removes the two Vite 8 warnings.
+- Tailwind 3.4 to 4.3.5 with `@tailwindcss/postcss`; `autoprefixer` and the empty `tailwind.config.js` are gone. Class names whose meaning changed were renamed (`rounded` to `rounded-sm`, `shadow-sm` to `shadow-xs`, `focus:outline-none` to `focus:outline-hidden`; 31 uses). Two Tailwind 3 defaults the app relied on are kept in `index.css`: the default border colour and the pointer cursor on buttons. Sources are limited to `index.html`, `print.html` and `src/`.
+- Node: `.node-version` 26.13.0 (what CI now runs and what the suites were verified on), `engines` `>=24`, `@types/node` 24 (Electron's Node, not the CI Node). The README says so.
+- Held on purpose: TypeScript stays on 5.9 (typescript-eslint supports up to 6.0) and `@types/node` on 24; Dependabot is told to skip those two majors.
+**Verified:** typecheck, lint, 130 unit, 44 UI, 12 Electron tests and the packaged smoke test; `npm audit` 0 vulnerabilities. Pixel comparison of ten screenshots (light and dark: editor, 2 × 1, settings, font list, confirmation) before and after Tailwind 4: identical layout everywhere. Colours shift slightly because Tailwind 4 uses a new palette (the Print button blue is a little brighter, dark backgrounds differ by a few levels), and the font-list arrow moves by a pixel.
+**Not covered:** the four GitHub Actions bumps (checkout 7, setup-node 7, upload-artifact 7, download-artifact 8) were not applied. They are pinned by commit SHA and can only be tested by a CI run; Dependabot's pull requests are the way to take them once CI on `build-v1` is green.
+
 ## Run log
 
 - 2026-11-17 01:44 EST — file created from the first code review plus the zod upgrade work.
@@ -373,3 +384,4 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 - 2026-11-17 07:47 EST — LM-049 to LM-052: ESLint added (87 findings fixed), splash failsafe, typed helper output, startup failure handling. Full suite green: 123 unit, 12 Electron, 44 UI, packaged smoke.
 - 2026-11-17 09:08 EST — Owner tested both real printers (SP410, SP310) from `build-v1` at 6b09da4: "looks good". Pushed to origin earlier; CI run 44087775714 not yet checked.
 - 2026-11-17 09:17 EST — Owner confirmed both printers print correctly and decided: fixed stock per printer (4 × 6 and 2.25 × 1.25), no paper selection, stale branches may go, audit flags and version bumps wanted. First CI run (44087775714) had failed: LM-053 and LM-054 found and fixed. LM-018 (branches), LM-020 (closed by decision) and LM-024 (0 vulnerabilities) done.
+- 2026-11-17 09:25 EST — LM-055: Vite 8, Tailwind 4 and Node 26/24 baseline done and verified (0 audit findings). Visual baseline compared before and after Tailwind 4.

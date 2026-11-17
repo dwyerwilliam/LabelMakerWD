@@ -104,7 +104,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     <ModalFrame
       labelledBy={titleId}
       onEscape={closeDialog}
-      className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-lg bg-white shadow-2xl focus:outline-none dark:bg-slate-900"
+      className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-lg bg-white shadow-2xl focus:outline-hidden dark:bg-slate-900"
     >
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
           <h2 id={titleId} className="text-lg font-semibold text-slate-900 dark:text-white">Settings</h2>
@@ -136,7 +136,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         <h4 className="text-sm font-semibold text-slate-900 dark:text-white">{info.label} · iDPRT {info.model}</h4>
                         <p className="mt-0.5 text-[11px] text-slate-500">{info.stock} · fixed USB profile</p>
                       </div>
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">{profile === '4x6' ? 'SP410 Match' : 'SP310 Match'}</span>
+                      <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">{profile === '4x6' ? 'SP410 Match' : 'SP310 Match'}</span>
                     </div>
 
                     {savedProblem && (
@@ -184,12 +184,12 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                             Label Maker could not tell how this queue is connected. Labels are only sent to USB printers.
                           </p>
                           <label className="mt-2 flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
-                            <input type="checkbox" checked={usbPromptConfirmed} onChange={(event) => setUsbPromptConfirmed(event.target.checked)} className="rounded" />
+                            <input type="checkbox" checked={usbPromptConfirmed} onChange={(event) => setUsbPromptConfirmed(event.target.checked)} className="rounded-sm" />
                             This printer is connected via USB
                           </label>
                           <div className="mt-3 flex gap-2">
-                            <button type="button" disabled={!usbPromptConfirmed} onClick={() => void handleConfirmUsb()} className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">Use this queue</button>
-                            <button type="button" onClick={() => setUsbPrompt(null)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-700 dark:border-slate-600 dark:text-slate-300">Cancel</button>
+                            <button type="button" disabled={!usbPromptConfirmed} onClick={() => void handleConfirmUsb()} className="rounded-sm bg-blue-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">Use this queue</button>
+                            <button type="button" onClick={() => setUsbPrompt(null)} className="rounded-sm border border-slate-300 px-3 py-1 text-xs text-slate-700 dark:border-slate-600 dark:text-slate-300">Cancel</button>
                           </div>
                         </div>
                       )}
@@ -207,17 +207,17 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                       <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/40 p-3 dark:border-amber-800 dark:bg-amber-950/20">
                         <h5 className="text-xs font-semibold text-amber-900 dark:text-amber-200">Manual {info.model} Queue Override</h5>
                         <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">Use this only when the operating system queue was renamed.</p>
-                        <select value={selectedRenamedQueue} onChange={(event) => setSelectedRenamedQueue(event.target.value)} className="mt-2 w-full rounded border border-slate-300 bg-white p-1.5 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                        <select value={selectedRenamedQueue} onChange={(event) => setSelectedRenamedQueue(event.target.value)} className="mt-2 w-full rounded-sm border border-slate-300 bg-white p-1.5 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                           <option value="">-- Select installed printer --</option>
                           {unassignedQueues.map((queue) => <option key={queue.deviceName} value={queue.deviceName}>{queue.displayName} ({queue.port || 'Port unknown'})</option>)}
                         </select>
                         <div className="mt-3 space-y-1.5 text-xs">
-                          <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={usbConfirmed} onChange={(event) => setUsbConfirmed(event.target.checked)} className="rounded" />This printer is connected via USB</label>
-                          <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={stockConfirmed} onChange={(event) => setStockConfirmed(event.target.checked)} className="rounded" />This printer has {info.stock}</label>
+                          <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={usbConfirmed} onChange={(event) => setUsbConfirmed(event.target.checked)} className="rounded-sm" />This printer is connected via USB</label>
+                          <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={stockConfirmed} onChange={(event) => setStockConfirmed(event.target.checked)} className="rounded-sm" />This printer has {info.stock}</label>
                         </div>
                         <div className="mt-3 flex gap-2">
-                          <button type="button" disabled={!selectedRenamedQueue || !usbConfirmed || !stockConfirmed} onClick={() => void handleConfirmRenamed()} className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">Use as {info.model}</button>
-                          <button type="button" onClick={() => setRenamedProfile(null)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-700 dark:border-slate-600 dark:text-slate-300">Cancel</button>
+                          <button type="button" disabled={!selectedRenamedQueue || !usbConfirmed || !stockConfirmed} onClick={() => void handleConfirmRenamed()} className="rounded-sm bg-blue-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">Use as {info.model}</button>
+                          <button type="button" onClick={() => setRenamedProfile(null)} className="rounded-sm border border-slate-300 px-3 py-1 text-xs text-slate-700 dark:border-slate-600 dark:text-slate-300">Cancel</button>
                         </div>
                       </div>
                     )}
@@ -231,7 +231,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">System Fonts</h3>
             <p className="mt-1 text-xs text-slate-500">Label Maker enumerates local fonts installed on your computer.</p>
             <div className="mt-2 flex items-center gap-3">
-              <button type="button" disabled={fontsRefreshing} onClick={() => void handleRefreshFonts()} className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">{fontsRefreshing ? 'Refreshing…' : 'Refresh Fonts'}</button>
+              <button type="button" disabled={fontsRefreshing} onClick={() => void handleRefreshFonts()} className="rounded-sm border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">{fontsRefreshing ? 'Refreshing…' : 'Refresh Fonts'}</button>
               {fontsMessage && <span role="status" className="text-xs text-emerald-600 dark:text-emerald-400">{fontsMessage}</span>}
             </div>
           </section>
@@ -239,12 +239,12 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
           <section className="border-t border-slate-200 pt-4 dark:border-slate-800">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Restore Defaults</h3>
             <p className="mt-1 text-xs text-slate-500">Reset both profiles, their formatting, and printer selections. Current label text is preserved.</p>
-            <button type="button" onClick={onRestoreDefaults} className="mt-2 rounded border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/20">Restore Factory Defaults…</button>
+            <button type="button" onClick={onRestoreDefaults} className="mt-2 rounded-sm border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/20">Restore Factory Defaults…</button>
           </section>
         </div>
 
         <div className="flex justify-end border-t border-slate-200 px-6 py-3 dark:border-slate-800">
-          <button type="button" onClick={closeDialog} className="rounded bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">Done</button>
+          <button type="button" onClick={closeDialog} className="rounded-sm bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">Done</button>
         </div>
     </ModalFrame>
   );
