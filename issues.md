@@ -318,6 +318,7 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Problem:** Nothing checked what the print window produces. A regression in the page rules or the rotation would only show up on paper.
 **Fix:** The label is rendered in the real print window and exported with the same page rules; the PDF is inspected. Checks: exactly one page for every profile and orientation, including text that overflows; page size 288 × 432 pt for 4 × 6 portrait and landscape (landscape is composed sideways on portrait stock) and 162 × 90 pt for the 2 × 1; the landscape text runs top to bottom (a single clockwise quarter turn, not two); all text stays inside the safe inset.
 **Limit:** This is the document handed to the driver, not the printer's output. Physical acceptance (A17, A23) still needs the printers.
+**Physical check:** On 2026-11-17 the owner printed with both real printers (SP410 and SP310) from `build-v1` at 6b09da4 and reported that it looked good. Not recorded per case: SP310 stock match (LM-020) and the individual print-flow prompts.
 
 ### LM-048 · P3 · Tests · Fixed
 **Verified:** a second process started with the same settings folder quits by itself with exit code 0, no extra window opens, and the minimised window is restored.
@@ -356,3 +357,4 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 - 2026-11-17 02:22 EST — LM-015 to LM-018, LM-034, LM-042: CI workflow, Dependabot, .gitattributes, real packaged smoke test, README, tests included in typecheck.
 - 2026-11-17 02:33 EST — LM-043 to LM-048: print-page handshake (intermittent lost job), toolbar accessibility, stricter CSP, print-document PDF tests, second-instance test.
 - 2026-11-17 07:47 EST — LM-049 to LM-052: ESLint added (87 findings fixed), splash failsafe, typed helper output, startup failure handling. Full suite green: 123 unit, 12 Electron, 44 UI, packaged smoke.
+- 2026-11-17 09:08 EST — Owner tested both real printers (SP410, SP310) from `build-v1` at 6b09da4: "looks good". Pushed to origin earlier; CI run 44087775714 not yet checked.
