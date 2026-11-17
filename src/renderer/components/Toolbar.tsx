@@ -1,18 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { Alignment, FontItem, Orientation } from '@shared/contracts';
+import type { Alignment, FontItem, Orientation, PrinterProfile } from '@shared/contracts';
 import { useLabelStore } from '../stores/labelStore';
 import { usePreferencesStore } from '../stores/preferencesStore';
+import { useDeviceStore } from '../stores/deviceStore';
 import { useUIStore } from '../stores/uiStore';
 import { enumerateSystemFonts } from '../fonts/fontCatalog';
 
 export interface ToolbarProps {
   onPrintClick: () => void;
+  layoutReady: boolean;
 }
 
-export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
-  const { draft, setOrientation, setFontFamily, setFontSize, stepFontSize, setAlignment, setCopies } =
+export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick, layoutReady }) => {
+  const { activeProfile, draft, setActiveProfile, setOrientation, setFontFamily, setFontSize, stepFontSize, setAlignment, setCopies } =
     useLabelStore();
   const updatePreferences = usePreferencesStore((s) => s.update);
+  const updateProfilePreferences = usePreferencesStore((s) => s.updateProfile);
+  const selectedQueue = useDeviceStore((s) => s.selectedQueues[activeProfile]);
   const {
     openDialog,
     isPrintBusy,
@@ -55,12 +59,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
 
   const handleOrientationChange = (orient: Orientation) => {
     setOrientation(orient);
-    updatePreferences({ orientation: orient });
+    updateProfilePreferences(activeProfile, { orientation: orient });
   };
 
   const handleFontSelect = (family: string) => {
     setFontFamily(family);
-    updatePreferences({ fontFamily: family });
+    updateProfilePreferences(activeProfile, { fontFamily: family });
     setFontPickerOpen(false);
   };
 
@@ -69,7 +73,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
     if (!isNaN(parsed) && parsed >= 6 && parsed <= 288) {
       const rounded = Math.round(parsed * 2) / 2;
       setFontSize(rounded);
-      updatePreferences({ fontSizePt: rounded });
+      updateProfilePreferences(activeProfile, { fontSizePt: rounded });
       setFontSizeDraft(rounded.toString());
     } else {
       // Revert to valid value on escape or blur
@@ -89,25 +93,56 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
 
   const handleAlignmentChange = (align: Alignment) => {
     setAlignment(align);
-    updatePreferences({ alignment: align });
+    updateProfilePreferences(activeProfile, { alignment: align });
+  };
+
+  const handleProfileChange = (profile: PrinterProfile) => {
+    setActiveProfile(profile);
+    updatePreferences({ activeProfile: profile });
   };
 
   const filteredFonts = availableFonts.filter((f) =>
     f.family.toLowerCase().includes(fontSearchQuery.toLowerCase())
   );
 
-  const isPrintDisabled = draft.text.trim().length === 0 || isPrintBusy;
+  const isPrintDisabled = draft.text.trim().length === 0 || isPrintBusy || !selectedQueue || !layoutReady;
+  const isSmallProfile = activeProfile === '2x1';
+  const profileLabel = isSmallProfile ? '2 × 1' : '4 × 6';
 
   return (
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2.5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="flex flex-wrap items-center gap-3">
-        {/* Stock Badge */}
+        {/* Stock profile tabs */}
+        <div className="flex rounded-md border border-slate-200 bg-slate-50 p-0.5 dark:border-slate-700 dark:bg-slate-800" role="tablist" aria-label="Label stock profile">
+          {(['4x6', '2x1'] as PrinterProfile[]).map((profile) => {
+            const label = profile === '4x6' ? '4 × 6' : '2 × 1';
+            const model = profile === '4x6' ? 'SP410' : 'SP310';
+            return (
+              <button
+                key={profile}
+                type="button"
+                role="tab"
+                aria-selected={activeProfile === profile}
+                onClick={() => handleProfileChange(profile)}
+                className={`rounded px-2.5 py-1 text-xs font-semibold transition-colors ${
+                  activeProfile === profile
+                    ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-700 dark:text-blue-400'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
+                }`}
+                title={`${label} label profile for ${model}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
         <div className="flex items-center gap-1.5 rounded bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-          <span className="text-slate-400">Stock:</span> 4 × 6 in
+          <span className="text-slate-400">Stock:</span> {isSmallProfile ? 'DYMO 30334 · 2¼ × 1¼ in' : '4 × 6 in'}
         </div>
 
         {/* Orientation Toggle */}
-        <div className="flex rounded-md border border-slate-200 bg-slate-50 p-0.5 dark:border-slate-700 dark:bg-slate-800">
+        {!isSmallProfile ? <div className="flex rounded-md border border-slate-200 bg-slate-50 p-0.5 dark:border-slate-700 dark:bg-slate-800">
           <button
             type="button"
             onClick={() => handleOrientationChange('portrait')}
@@ -132,7 +167,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
           >
             Landscape
           </button>
-        </div>
+        </div> : (
+          <div className="rounded bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300" title="The SP310 outputs this stock in landscape orientation">
+            Landscape
+          </div>
+        )}
 
         {/* Font Family Picker */}
         <div className="relative" ref={fontDropdownRef}>
@@ -205,7 +244,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
                 type="button"
                 onClick={() => {
                   stepFontSize(1);
-                  updatePreferences({ fontSizePt: Math.min(288, draft.fontSizePt + 1) });
+                  updateProfilePreferences(activeProfile, { fontSizePt: Math.min(288, draft.fontSizePt + 1) });
                 }}
                 className="px-1 text-[9px] hover:bg-slate-100 dark:hover:bg-slate-700"
                 title="Increase 1 pt"
@@ -216,7 +255,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
                 type="button"
                 onClick={() => {
                   stepFontSize(-1);
-                  updatePreferences({ fontSizePt: Math.max(6, draft.fontSizePt - 1) });
+                  updateProfilePreferences(activeProfile, { fontSizePt: Math.max(6, draft.fontSizePt - 1) });
                 }}
                 className="px-1 text-[9px] hover:bg-slate-100 dark:hover:bg-slate-700"
                 title="Decrease 1 pt"
@@ -308,7 +347,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
               ? 'bg-slate-300 cursor-not-allowed dark:bg-slate-700 dark:text-slate-500'
               : 'bg-blue-600 hover:bg-blue-700'
           }`}
-          title="Print Label (Ctrl+P / Cmd+P)"
+          title={`Print ${profileLabel} label (Ctrl+P / Cmd+P)`}
         >
           {isPrintBusy ? (
             <>
@@ -316,7 +355,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
               <span>Sending…</span>
             </>
           ) : (
-            <span>Print</span>
+            <span>Print {profileLabel}</span>
           )}
         </button>
       </div>

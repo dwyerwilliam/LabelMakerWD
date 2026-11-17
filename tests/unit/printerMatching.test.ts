@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isSp410Eligible, detectTransport } from '@main/platform/printerAdapter';
+import { identifyPrinterProfile, isSp310Eligible, isSp410Eligible, detectTransport } from '@main/platform/printerAdapter';
 
 describe('Printer Matching and Eligibility', () => {
   it('matches SP410 and SP410BT queues in different casings and formats', () => {
@@ -22,6 +22,14 @@ describe('Printer Matching and Eligibility', () => {
     expect(isSp410Eligible('SP4100')).toBe(false);
     expect(isSp410Eligible('iDPRT SP4100')).toBe(false);
     expect(isSp410Eligible('SP4102')).toBe(false);
+  });
+
+  it('matches the SP310 to the 2x1 profile and rejects numbered variants', () => {
+    expect(isSp310Eligible('iDPRT SP310')).toBe(true);
+    expect(isSp310Eligible('SP-310')).toBe(true);
+    expect(identifyPrinterProfile('iDPRT SP310', '', 'SP310')).toBe('2x1');
+    expect(isSp310Eligible('SP3100')).toBe(false);
+    expect(identifyPrinterProfile('SP410-SP310')).toBe(null);
   });
 
   it('detects USB vs Bluetooth vs Network transports correctly', () => {

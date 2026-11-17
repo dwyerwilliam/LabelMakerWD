@@ -4,8 +4,10 @@ import path from 'path';
 import { app } from 'electron';
 import type { PrinterCapabilities } from './printerAdapter';
 import { detectTransport } from './printerAdapter';
+import type { PrinterProfile } from '@shared/contracts';
+import { SP310_OUTPUT_HEIGHT_IN, SP310_OUTPUT_WIDTH_IN } from '@shared/defaults';
 
-export async function inspectMacosPrinter(deviceName: string): Promise<PrinterCapabilities> {
+export async function inspectMacosPrinter(deviceName: string, profile: PrinterProfile): Promise<PrinterCapabilities> {
   const candidatePaths = [
     path.join(process.resourcesPath || '', 'native-bin', 'inspect_printer'),
     path.join(app.getAppPath(), 'native-bin', 'darwin', 'inspect_printer'),
@@ -16,24 +18,27 @@ export async function inspectMacosPrinter(deviceName: string): Promise<PrinterCa
 
   if (helperPath) {
     try {
-      const result = await runMacHelper(helperPath, deviceName);
+      const result = await runMacHelper(helperPath, deviceName, profile);
       if (result) return result;
     } catch {}
   }
 
-  // Fallback default metrics for 4x6
+  const dimensions = profile === '4x6'
+    ? { width: 101.6, height: 152.4 }
+    : { width: SP310_OUTPUT_WIDTH_IN * 25.4, height: SP310_OUTPUT_HEIGHT_IN * 25.4 };
+
   return {
     status: 'ready',
     transport: detectTransport('', deviceName),
-    paperDimensionsMm: { width: 101.6, height: 152.4 },
+    paperDimensionsMm: dimensions,
     hardMarginsMm: { left: 0, top: 0, right: 0, bottom: 0 },
     resolutionDpi: { x: 203, y: 203 },
   };
 }
 
-function runMacHelper(helperPath: string, deviceName: string): Promise<PrinterCapabilities | null> {
+function runMacHelper(helperPath: string, deviceName: string, profile: PrinterProfile): Promise<PrinterCapabilities | null> {
   return new Promise((resolve) => {
-    const proc = spawn(helperPath, [deviceName]);
+    const proc = spawn(helperPath, [deviceName, profile]);
     let stdout = '';
 
     const timeout = setTimeout(() => {

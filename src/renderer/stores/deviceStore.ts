@@ -1,50 +1,57 @@
 import { create } from 'zustand';
-import type { NormalizedQueue } from '@shared/contracts';
+import type { NormalizedQueue, PreferencesV2, PrinterProfile } from '@shared/contracts';
+
+type SelectedQueues = Record<PrinterProfile, NormalizedQueue | null>;
+
+function selectForProfile(
+  queues: NormalizedQueue[],
+  profile: PrinterProfile,
+  preferences?: PreferencesV2
+): NormalizedQueue | null {
+  const saved = preferences?.profiles[profile].printer;
+  if (saved) {
+    const matching = queues.find((queue) => queue.deviceName === saved.deviceName);
+    if (matching && (matching.profile === profile || (matching.profile === null && saved.manualProfileConfirmed))) {
+      return matching.profile === profile ? matching : { ...matching, profile, requiresManualConfirmation: false };
+    }
+  }
+  return queues.find((queue) => queue.profile === profile && !queue.requiresManualConfirmation) || null;
+}
 
 export interface DeviceState {
   isScanning: boolean;
   queues: NormalizedQueue[];
-  selectedQueue: NormalizedQueue | null;
+  selectedQueues: SelectedQueues;
   error: string | null;
 
   setScanning: (scanning: boolean) => void;
-  setQueues: (queues: NormalizedQueue[]) => void;
-  selectQueue: (deviceName: string) => void;
+  setQueues: (queues: NormalizedQueue[], preferences?: PreferencesV2) => void;
+  selectQueue: (profile: PrinterProfile, deviceName: string) => void;
   setError: (error: string | null) => void;
 }
 
-export const useDeviceStore = create<DeviceState>((set, get) => ({
+export const useDeviceStore = create<DeviceState>((set) => ({
   isScanning: false,
   queues: [],
-  selectedQueue: null,
+  selectedQueues: { '4x6': null, '2x1': null },
   error: null,
 
-  setScanning: (scanning: boolean) => set({ isScanning: scanning }),
+  setScanning: (scanning) => set({ isScanning: scanning }),
 
-  setQueues: (queues: NormalizedQueue[]) => {
-    const currentSelected = get().selectedQueue;
-    let newSelected: NormalizedQueue | null = null;
+  setQueues: (queues, preferences) => set({
+    queues,
+    selectedQueues: {
+      '4x6': selectForProfile(queues, '4x6', preferences),
+      '2x1': selectForProfile(queues, '2x1', preferences),
+    },
+  }),
 
-    if (currentSelected) {
-      newSelected = queues.find((q) => q.deviceName === currentSelected.deviceName) || null;
-    }
+  selectQueue: (profile, deviceName) => set((state) => ({
+    selectedQueues: {
+      ...state.selectedQueues,
+      [profile]: state.queues.find((queue) => queue.deviceName === deviceName) || null,
+    },
+  })),
 
-    if (!newSelected) {
-      // Pick the first eligible queue
-      const eligible = queues.filter((q) => q.isEligibleSp410);
-      newSelected = eligible.length > 0 ? eligible[0] : null;
-    }
-
-    set({
-      queues,
-      selectedQueue: newSelected,
-    });
-  },
-
-  selectQueue: (deviceName: string) => {
-    const queue = get().queues.find((q) => q.deviceName === deviceName) || null;
-    set({ selectedQueue: queue });
-  },
-
-  setError: (error: string | null) => set({ error }),
+  setError: (error) => set({ error }),
 }));

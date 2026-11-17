@@ -13,8 +13,12 @@ import {
 export const LabelEditor: React.FC = () => {
   const { draft, setText, setLayoutFingerprint, overflow } = useLabelStore();
   const editorElRef = useRef<HTMLDivElement>(null);
+  const measurementElRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<EditHistory>(new EditHistory(draft.text));
+  // Flag: when true, the next draft.text change came from user input (typing/paste)
+  // so we must NOT overwrite the DOM (which would destroy the caret position).
+  const isUserInputRef = useRef(false);
 
   const [scale, setScale] = useState(1.0);
 
@@ -25,7 +29,7 @@ export const LabelEditor: React.FC = () => {
     const updateScale = () => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const newScale = calculateFitScale(rect.width, rect.height, draft.orientation, 48);
+      const newScale = calculateFitScale(rect.width, rect.height, draft.profile, draft.orientation, 48);
       setScale(newScale);
     };
 
@@ -34,19 +38,47 @@ export const LabelEditor: React.FC = () => {
     observer.observe(containerRef.current);
 
     return () => observer.disconnect();
-  }, [draft.orientation]);
+  }, [draft.profile, draft.orientation]);
+
+  // Synchronize DOM text with draft.text only when changed externally (undo/redo/reset).
+  // When the change came from the user typing or pasting, skip — the DOM already has
+  // the correct text and overwriting it would destroy the caret position.
+  useEffect(() => {
+    if (isUserInputRef.current) {
+      isUserInputRef.current = false;
+      return;
+    }
+    if (editorElRef.current) {
+      const domText = normalizePlainText(
+        editorElRef.current.innerText || editorElRef.current.textContent || ''
+      );
+      if (domText !== draft.text) {
+        editorElRef.current.textContent = draft.text;
+      }
+    }
+  }, [draft.text]);
 
   // Measure layout and update fingerprint
   const runMeasurement = useCallback(() => {
-    if (editorElRef.current) {
-      const fingerprint = measureLayoutFingerprint(editorElRef.current, draft.orientation);
-      setLayoutFingerprint(fingerprint);
+    // Measure an offscreen non-editable mirror that uses the same DOM/CSS
+    // structure as the print renderer. The live contenteditable can contain
+    // browser-generated div/br nodes for multiline input, which are not a
+    // reliable source for print geometry.
+    const measurementElement = measurementElRef.current || editorElRef.current;
+    if (measurementElement) {
+      const fingerprint = measureLayoutFingerprint(
+        measurementElement,
+        draft.profile,
+        draft.orientation,
+        draft.profile === '4x6' && draft.orientation === 'landscape'
+      );
+      setLayoutFingerprint(fingerprint, draft.revision);
     }
-  }, [draft.orientation, setLayoutFingerprint]);
+  }, [draft.profile, draft.orientation, draft.revision, overflow, setLayoutFingerprint]);
 
   useEffect(() => {
     runMeasurement();
-  }, [draft.text, draft.orientation, draft.fontSizePt, draft.alignment, draft.preferredFontFamily, runMeasurement]);
+  }, [draft.text, draft.profile, draft.orientation, draft.fontSizePt, draft.alignment, draft.preferredFontFamily, runMeasurement]);
 
   // Handle plain text input
   const handleInput = (rawText: string) => {
@@ -56,6 +88,7 @@ export const LabelEditor: React.FC = () => {
       : { start: normalized.length, end: normalized.length };
 
     historyRef.current.push(normalized, caret, 'type');
+    isUserInputRef.current = true;
     setText(normalized);
   };
 
@@ -87,6 +120,7 @@ export const LabelEditor: React.FC = () => {
       const newText = normalizePlainText(editorElRef.current.innerText || editorElRef.current.textContent || '');
       const caret = getCaretCharacterOffsetWithin(editorElRef.current);
       historyRef.current.push(newText, caret, 'paste');
+      isUserInputRef.current = true;
       setText(newText);
     }
   };
@@ -143,7 +177,7 @@ export const LabelEditor: React.FC = () => {
     }
   };
 
-  const dims = getPageDimensions(draft.orientation);
+  const dims = getPageDimensions(draft.profile, draft.orientation);
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden bg-slate-100 dark:bg-slate-950">
@@ -176,6 +210,7 @@ export const LabelEditor: React.FC = () => {
           <LabelSurface
             ref={editorElRef}
             text={draft.text}
+            profile={draft.profile}
             orientation={draft.orientation}
             fontFamily={draft.resolvedFontFamily}
             fontSizePt={draft.fontSizePt}
@@ -187,6 +222,28 @@ export const LabelEditor: React.FC = () => {
             onKeyDown={handleKeyDown}
           />
         </div>
+      </div>
+
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          left: '-10000px',
+          top: 0,
+          pointerEvents: 'none',
+        }}
+      >
+        <LabelSurface
+          ref={measurementElRef}
+          text={draft.text}
+          profile={draft.profile}
+          orientation={draft.orientation}
+          fontFamily={draft.resolvedFontFamily}
+          fontSizePt={draft.fontSizePt}
+          alignment={draft.alignment}
+          isPrintMode={true}
+          overflow={overflow}
+        />
       </div>
     </div>
   );

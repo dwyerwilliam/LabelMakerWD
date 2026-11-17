@@ -1,10 +1,10 @@
 # Label Maker — Technical Specification
 
-**Version:** v1 draft · November 16, 2026
+**Version:** v2 draft · November 16, 2026
 
-**Status:** Architecture and implementation contract; no application code or hardware verification yet
+**Status:** Architecture and implementation contract; 2 × 1 SP310 path implemented for physical validation; hardware output remains unverified
 
-**Functional baseline:** [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md), initial commit `5de7890`
+**Functional baseline:** [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md), expanded for SP410 4 × 6 and SP310/DYMO 30334 2 × 1 profiles
 
 **Targets:** Windows and macOS only. Linux is deferred.
 
@@ -104,10 +104,12 @@ Illustrative TypeScript contracts; runtime validation is mandatory at IPC and di
 ```ts
 type Orientation = 'portrait' | 'landscape';
 type Alignment = 'left' | 'center' | 'right';
+  type PrinterProfile = '4x6' | '2x1';
 
 interface LabelDraft {
   revision: number;
   text: string;                 // LF newlines; tabs expanded to four spaces
+    profile: PrinterProfile;
   orientation: Orientation;
   preferredFontFamily: string;
   resolvedFontFamily: string;   // actual family used in preview
@@ -120,23 +122,29 @@ interface PrinterChoice {
   deviceName: string;           // exact OS queue identifier, never display name
   platform: 'win32' | 'darwin';
   identityFingerprint: string;  // model/driver/port metadata when available
-  manualSp410Confirmed: boolean;
+    manualProfileConfirmed: boolean;
   usbConfirmed: boolean;
 }
 
-interface PreferencesV1 {
-  schemaVersion: 1;
-  orientation: Orientation;
-  fontFamily: string;
-  fontSizePt: number;
-  alignment: Alignment;
-  printer: PrinterChoice | null;
+  interface ProfilePreferences {
+    orientation: Orientation;
+    fontFamily: string;
+    fontSizePt: number;
+    alignment: Alignment;
+    printer: PrinterChoice | null;
+  }
+
+  interface PreferencesV2 {
+    schemaVersion: 2;
+    activeProfile: PrinterProfile;
+    profiles: Record<PrinterProfile, ProfilePreferences>;
 }
 
 interface PrintSnapshot {
   requestId: string;
   draftRevision: number;
   text: string;
+    profile: PrinterProfile;
   orientation: Orientation;
   resolvedFontFamily: string;
   fontSizePt: number;
@@ -225,20 +233,20 @@ Collect a layout fingerprint per draft revision. On print preparation, the hidde
 
 ## 8. Printer adapter and capability inspection
 
-Electron `getPrintersAsync()` provides the queue list. Normalize metadata without treating presence as “online.” Match model identity carefully, prefer driver/model identifiers, and reject SP310 identity even if a queue name misleadingly contains SP410. Manual selection uses the confirmed override from the functional specification.
+Electron `getPrintersAsync()` provides the queue list. Normalize metadata without treating presence as “online.” Match exact supported model identity to a profile: SP410/SP410BT → `4x6`, SP310 → `2x1`; reject numbered variants and ambiguous metadata. Manual selection uses the profile-specific confirmed override from the functional specification.
 
 Reconcile each discovered queue with an OS adapter using its exact queue identifier. Changed driver/model/port fingerprint invalidates old manual/USB confirmations. Do not compare by display name alone.
 
 Electron's portable printer record is insufficient to promise paper/hard-margin inspection. Plan a small **read-only native helper per OS**:
 
-- Windows: C++ helper using Winspool for queue/port identity and GDI driver capability inspection. Construct a per-job 4 × 6 DEVMODE, let the driver validate it, then obtain physical size, printable extent, offsets, and resolution from a printer DC. Never change global printer defaults. [Windows device capabilities](https://learn.microsoft.com/en-us/windows/win32/gdi/retrieving-device-data), [GetDeviceCaps](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-getdevicecaps).
+- Windows: C++ helper using Winspool for queue/port identity and GDI driver capability inspection. Construct a per-job profile-specific DEVMODE, let the driver validate it, then obtain physical size, printable extent, offsets, and resolution from a printer DC. Never change global printer defaults. [Windows device capabilities](https://learn.microsoft.com/en-us/windows/win32/gdi/retrieving-device-data), [GetDeviceCaps](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-getdevicecaps).
 - macOS: Swift helper using Core Printing for printer/paper information and validated page format. Read paper margins and effective dimensions; query queue transport/status through supported OS printing APIs. [Core Printing](https://developer.apple.com/documentation/applicationservices/core_printing), [PMPaperGetMargins](https://developer.apple.com/documentation/applicationservices/1461994-pmpapergetmargins).
 
 Helpers take bounded JSON over stdin and emit versioned JSON over stdout. Main launches an absolute bundled path with `spawn`, `shell: false`, and hidden windows on Windows. No shell command interpolation, arbitrary paths, print content, raw printer commands, or privileged installation. Build helpers on each native CI runner and package them outside ASAR as resources. They avoid coupling the app to a native Node ABI.
 
 A query has a 10-second timeout; terminate a stuck helper and report an inspection error without freezing editing. Discovery can show “Installed,” but Print stays disabled until required page geometry is validated. Transport/status may remain unknown and follow the functional confirmation rules; unknown page geometry is not silently accepted.
 
-Compare effective media to 101.6 × 152.4 mm within 0.1 mm driver-rounding tolerance; 100 × 150 mm fails. Verify the app's 3.175 mm inset contains the entire reported unprintable boundary. Prefer explicit custom media rather than paper display-name matching. Cache capabilities per queue fingerprint and invalidate on rescan/settings change; revalidate before each print.
+Compare effective media to the active profile's expected geometry within 0.1 mm driver-rounding tolerance: 101.6 × 152.4 mm for 4 × 6, and 57.15 × 31.75 mm for DYMO 30334 2 × 1 output. Verify the app's 3.175 mm inset contains the entire reported unprintable boundary. Prefer explicit custom media rather than paper display-name matching. Cache capabilities per queue fingerprint and invalidate on rescan/settings change; revalidate before each print.
 
 Capability inspection establishes the intended driver configuration. It cannot guarantee that Electron and the spooler will honor it identically; the physical driver gate remains mandatory.
 
@@ -246,14 +254,14 @@ Capability inspection establishes the intended driver configuration. It cannot g
 
 Use a hidden BrowserWindow with a restricted print preload and the same bundled LabelSurface code/CSS. Wait for DOM/font readiness and the layout fingerprint before invoking the print API. Keep print content in memory; do not save temporary PDFs or label files.
 
-**Chosen orientation strategy:** always send a portrait 4 × 6 physical sheet. Rotate the landscape composition inside that sheet by 90 degrees clockwise. Do not also enable driver landscape.
+**Chosen orientation strategy:** the SP410 path always sends a portrait 4 × 6 physical sheet and rotates the 4 × 6 landscape composition inside that sheet by 90 degrees clockwise. The SP310 path sends a native 2.25 × 1.25 inch landscape page for DYMO 30334. Do not also enable driver landscape on either path.
 
 - Portrait physical root: 384 × 576 CSS px.
 - Landscape logical content: 576 × 384 CSS px.
 - Landscape transform: `transform-origin: 0 0; transform: translateX(384px) rotate(90deg)`.
 - That transform maps logical x/y to physical (384 − y, x), fitting exactly inside the portrait stock.
 - The logical safe area rotates with the content.
-- Physical print CSS uses `@page { size: 4in 6in; margin: 0 }`; html/body have zero margins and one fixed page.
+- The 4 × 6 print CSS uses `@page { size: 4in 6in; margin: 0 }`; the 2 × 1 print CSS uses `@page { size: 2.25in 1.25in; margin: 0 }`. Each profile has one fixed page.
 
 Baseline Electron options, validated against the pinned runtime/driver:
 
@@ -261,7 +269,9 @@ Baseline Electron options, validated against the pinned runtime/driver:
 {
   silent: true,
   deviceName: selectedQueue.deviceName,
-  pageSize: { width: 101600, height: 152400 }, // micrometres
+  pageSize: profile === '2x1'
+    ? { width: 57150, height: 31750 }
+    : { width: 101600, height: 152400 }, // micrometres
   landscape: false,                         // rotation is in composition
   margins: { marginType: 'none' },
   scaleFactor: 100,                         // percentage, not PDF scale=1
@@ -348,7 +358,7 @@ Proposed scripts:
 
 Single repository and package; no monorepo. Keep manifests/lockfile, specs, source, native-helper source, and tests under Git. Ignore node_modules, generated bundles/helpers, installers, test output, and local diagnostic files.
 
-CI uses Windows and macOS runners only. Jobs run clean install, typecheck, unit/UI tests, native compilation, app build, real Electron tests, packaging, and packaged smoke. UI fixtures must not call real print submission. Physical printing is a separate opt-in hardware test requiring an explicitly configured SP410 queue.
+CI uses Windows and macOS runners only. Jobs run clean install, typecheck, unit/UI tests, native compilation, app build, real Electron tests, packaging, and packaged smoke. UI fixtures must not call real print submission. Physical printing is a separate opt-in hardware test requiring an explicitly configured SP410 or SP310 queue.
 
 Use read-only CI permissions, commit-pinned actions, and artifact uploads. No remote publication or auto-update configuration in v1. Personal-use installers may be unsigned; macOS arm64 still needs valid ad-hoc signing of executable content. Verify helper execution and first launch in the packaged app rather than assuming development success establishes installation success.
 
@@ -361,11 +371,11 @@ Use read-only CI permissions, commit-pinned actions, and artifact uploads. No re
 | Browser UI | Editing/IME/undo/paste, font selection, alignment, clipping, resize, accessibility | A06–A12, A18–A19 |
 | Real Electron | Trusted IPC, actual font catalog, queue enumeration, hidden layout fingerprint, lifecycle | A02–A06, A14–A16, A20 |
 | Packaged | Custom protocol, helper resources, permissions, clean install/start, no network dependencies | A06, A19 |
-| Physical SP410 | Portrait/landscape, exact paper, copies, wrap, safe margins, scale, no trailing labels | A10–A14, A17–A18 |
+| Physical printers | SP410 4 × 6 portrait/landscape and SP310 DYMO 30334 2 × 1 landscape; exact paper, copies, wrap, safe margins, scale, no trailing labels | A10–A14, A17–A18, A23 |
 
 Geometry fixtures must cover 6/24/72/288 pt, 0.5-point values, trailing newlines, long unbroken words, repeated spaces, tabs, missing glyphs, proportional/monospace fonts, mixed scripts, and clipping. IME and selection tests must run in actual Electron as well as browser tests when behavior differs.
 
-Use isolated test userData with an explicit test-only setting. Never read or mutate the user's real preferences in automation. Use fake queues for SP310 exclusion; no SP310 hardware work.
+Use isolated test userData with an explicit test-only setting. Never read or mutate the user's real preferences in automation. Use fake queues for both profile matchers, ambiguous queues, cross-profile selection, and unavailable printers. Physical SP310 work is opt-in and requires a real DYMO 30334 test print.
 
 Hardware evidence records OS/architecture, Electron/app/driver versions, queue transport, effective media/margins/resolution, test snapshot identifier, measurements, and photos. Check 50 mm length and 1 mm placement targets, repeated feeding, 1 and 3 copies, both orientations, and offline reconnect behavior. Do not record real user label content in diagnostic evidence.
 
@@ -373,7 +383,7 @@ The same selected font must match preview and print on a given machine. Identica
 
 ## 14. Implementation sequence and release gates
 
-1. **Platform spike:** scaffold pinned toolchain; validate packaged Local Font Access; compile inspection helpers; prove effective 4 × 6 geometry; print portrait and rotated landscape on Windows and macOS. Record exact versions and measured outcomes.
+1. **Platform spike:** scaffold pinned toolchain; validate packaged Local Font Access; compile inspection helpers; prove effective 4 × 6 and 2.25 × 1.25 geometry; print SP410 portrait/rotated landscape and SP310 fixed landscape on Windows and macOS. Record exact versions and measured outcomes.
 2. **Layout/editor spike:** prove shared layout and fingerprints, whitespace, IME/undo, clipped text editing, and font fallback. Resolve glyph bounds before claiming WYSIWYG.
 3. **Core app:** implement window, toolbar, stores, typed bridge, printer selection, settings, and lifecycle.
 4. **Print integration:** implement immutable preparations, confirmations, single-flight submission, timeouts, late callbacks, and error messages.
@@ -383,4 +393,4 @@ Stop expanding UI work if the first spike cannot achieve actual-size one-page ou
 
 Open validation items are specific experiments, not alternative stacks: exact compatible version pins; packaged font enumeration; driver metadata completeness; helper capability equivalence to actual Electron output; glyph-bound measurements; and physical alignment on each supported platform.
 
-A Windows-only success is an implementation milestone, not completion of this Windows/macOS specification. Linux and SP310 each require later scope, adapters, packaging, and acceptance work.
+A Windows-only success is an implementation milestone, not completion of this Windows/macOS specification. Linux remains deferred. SP310 is implemented but cannot be considered accepted until physical DYMO 30334 output is measured.

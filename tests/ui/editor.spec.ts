@@ -6,21 +6,21 @@ test.beforeEach(async ({ page }) => {
     (window as any).api = {
       preferences: {
         get: async () => ({
-          schemaVersion: 1,
-          orientation: 'portrait',
-          fontFamily: 'Arial',
-          fontSizePt: 24,
-          alignment: 'center',
-          printer: null,
+          schemaVersion: 2,
+          activeProfile: '4x6',
+          profiles: {
+            '4x6': { orientation: 'portrait', fontFamily: 'Arial', fontSizePt: 24, alignment: 'center', printer: null },
+            '2x1': { orientation: 'landscape', fontFamily: 'Arial', fontSizePt: 12, alignment: 'center', printer: null },
+          },
         }),
         update: async () => {},
         reset: async () => ({
-          schemaVersion: 1,
-          orientation: 'portrait',
-          fontFamily: 'Arial',
-          fontSizePt: 24,
-          alignment: 'center',
-          printer: null,
+          schemaVersion: 2,
+          activeProfile: '4x6',
+          profiles: {
+            '4x6': { orientation: 'portrait', fontFamily: 'Arial', fontSizePt: 24, alignment: 'center', printer: null },
+            '2x1': { orientation: 'landscape', fontFamily: 'Arial', fontSizePt: 12, alignment: 'center', printer: null },
+          },
         }),
       },
       printers: {
@@ -37,12 +37,12 @@ test.beforeEach(async ({ page }) => {
             paperDimensionsMm: { width: 101.6, height: 152.4 },
             hardMarginsMm: { left: 0, top: 0, right: 0, bottom: 0 },
             resolutionDpi: { x: 203, y: 203 },
-            isEligibleSp410: true,
+            profile: '4x6',
             requiresManualConfirmation: false,
             queryTimestamp: Date.now(),
           },
         ],
-        select: async () => null,
+        select: async (_profile: string, _deviceName: string) => null,
       },
       print: {
         prepare: async (snapshot: any) => ({
@@ -68,7 +68,7 @@ test.beforeEach(async ({ page }) => {
 
 test('starts in portrait orientation with stock 4 x 6 badge and disabled print button', async ({ page }) => {
   await expect(page.locator('text=Stock: 4 × 6 in')).toBeVisible();
-  const printButton = page.getByRole('button', { name: 'Print', exact: true });
+  const printButton = page.getByRole('button', { name: 'Print 4 × 6', exact: true });
   await expect(printButton).toBeDisabled();
 
   // Selected queue should show Ready status
@@ -80,7 +80,7 @@ test('typing text enables print button', async ({ page }) => {
   await editor.click();
   await editor.fill('Shipping Label\nFragile Handle With Care');
 
-  const printButton = page.getByRole('button', { name: 'Print', exact: true });
+  const printButton = page.getByRole('button', { name: 'Print 4 × 6', exact: true });
   await expect(printButton).toBeEnabled();
 });
 
@@ -96,6 +96,15 @@ test('toggling orientation switches layout between portrait and landscape', asyn
 
   const portraitSheet = page.locator('[data-orientation="portrait"]');
   await expect(portraitSheet).toBeVisible();
+});
+
+test('switching to the 2 x 1 profile shows fixed landscape geometry', async ({ page }) => {
+  await page.getByRole('tab', { name: '2 × 1' }).click();
+
+  await expect(page.locator('text=Stock: DYMO 30334 · 2¼ × 1¼ in')).toBeVisible();
+  await expect(page.getByText('Landscape', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-profile="2x1"][data-orientation="landscape"]')).toBeVisible();
+  await expect(page.locator('text=No SP310 selected')).toBeVisible();
 });
 
 test('settings dialog opens and lists detected printer', async ({ page }) => {

@@ -11,10 +11,10 @@ import { useUIStore } from './stores/uiStore';
 import type { PrintPrepareResult, PrintSnapshot } from '@shared/contracts';
 
 export const App: React.FC = () => {
-  const { draft, layoutFingerprint, setOrientation, setFontFamily, setFontSize, setAlignment } =
+  const { activeProfile, draft, layoutFingerprint, layoutFingerprintRevision, hydratePreferences } =
     useLabelStore();
-  const { setQueues, setScanning, setError, selectedQueue } = useDeviceStore();
-  const { preferences, hydrate, reset: resetPrefs } = usePreferencesStore();
+  const { setQueues, setScanning, setError, selectedQueues, selectQueue } = useDeviceStore();
+  const { hydrate, reset: resetPrefs, update: updatePreferences } = usePreferencesStore();
   const {
     activeDialog,
     openDialog,
@@ -33,7 +33,7 @@ export const App: React.FC = () => {
       setScanning(true);
       setError(null);
       const queues = await window.api.printers.scan();
-      setQueues(queues);
+      setQueues(queues, usePreferencesStore.getState().preferences);
     } catch (err: any) {
       console.error('Scan error:', err);
       setError(err?.message || 'Failed scanning printers');
@@ -51,10 +51,7 @@ export const App: React.FC = () => {
         const saved = await window.api.preferences.get();
         if (saved) {
           hydrate(saved);
-          setOrientation(saved.orientation);
-          setFontFamily(saved.fontFamily);
-          setFontSize(saved.fontSizePt);
-          setAlignment(saved.alignment);
+          hydratePreferences(saved);
         }
       } catch (err) {
         console.warn('Failed hydrating preferences:', err);
@@ -64,7 +61,7 @@ export const App: React.FC = () => {
     }
 
     init();
-  }, [handleScanPrinters, hydrate, setAlignment, setFontFamily, setFontSize, setOrientation]);
+  }, [handleScanPrinters, hydrate, hydratePreferences]);
 
   // Subscribe to print state events from main
   useEffect(() => {
@@ -100,13 +97,14 @@ export const App: React.FC = () => {
   }, [setPrintBusy]);
 
   const handlePrintClick = useCallback(async () => {
-    if (!window.api || !layoutFingerprint || isPrintBusy) return;
+    if (!window.api || !layoutFingerprint || layoutFingerprintRevision !== draft.revision || isPrintBusy) return;
     if (draft.text.trim().length === 0) return;
 
     const snapshot: PrintSnapshot = {
       requestId: crypto.randomUUID(),
       draftRevision: draft.revision,
       text: draft.text,
+      profile: draft.profile,
       orientation: draft.orientation,
       resolvedFontFamily: draft.resolvedFontFamily,
       fontSizePt: draft.fontSizePt,
@@ -139,7 +137,7 @@ export const App: React.FC = () => {
     } catch (err: any) {
       setPrintBusy(false, `Preparation error: ${err?.message || 'Unknown'}`);
     }
-  }, [draft, executeConfirmedPrint, isPrintBusy, layoutFingerprint, openDialog, setPrintBusy]);
+  }, [draft, executeConfirmedPrint, isPrintBusy, layoutFingerprint, layoutFingerprintRevision, openDialog, setPrintBusy]);
 
   // Keyboard shortcut Ctrl+P / Cmd+P
   useEffect(() => {
@@ -176,11 +174,8 @@ export const App: React.FC = () => {
     if (!window.api) return;
     try {
       const reset = await window.api.preferences.reset();
-      resetPrefs();
-      setOrientation(reset.orientation);
-      setFontFamily(reset.fontFamily);
-      setFontSize(reset.fontSizePt);
-      setAlignment(reset.alignment);
+      resetPrefs(reset);
+      hydratePreferences(reset, true);
       await handleScanPrinters();
     } catch (err) {
       console.error('Failed restoring defaults:', err);
@@ -189,7 +184,10 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 font-sans text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">
-      <Toolbar onPrintClick={handlePrintClick} />
+      <Toolbar
+        onPrintClick={handlePrintClick}
+        layoutReady={layoutFingerprintRevision === draft.revision}
+      />
 
       <main className="flex flex-1 overflow-hidden">
         <LabelEditor />
@@ -201,13 +199,36 @@ export const App: React.FC = () => {
       <SettingsDialog
         onRefreshPrinters={handleScanPrinters}
         onRestoreDefaults={() => openDialog('confirm-reset')}
+        onSelectPrinter={async (profile, deviceName, manualConfirm) => {
+          const selected = await window.api.printers.select(profile, deviceName, manualConfirm);
+          if (selected) {
+            selectQueue(profile, selected.deviceName);
+            const current = usePreferencesStore.getState().preferences;
+            updatePreferences({
+              profiles: {
+                ...current.profiles,
+                [profile]: {
+                  ...current.profiles[profile],
+                  printer: {
+                    deviceName: selected.deviceName,
+                    platform: navigator.platform.toUpperCase().includes('MAC') ? 'darwin' : 'win32',
+                    identityFingerprint: `${selected.model}:${selected.driver}:${selected.port}`,
+                    manualProfileConfirmed: manualConfirm,
+                    usbConfirmed: selected.transport === 'usb' || manualConfirm,
+                  },
+                },
+              },
+            });
+          }
+          return selected;
+        }}
       />
 
       {/* Overflow Confirmation Dialog */}
       <ConfirmDialog
         isOpen={activeDialog === 'confirm-clip'}
         title="Print Clipped Label?"
-        message="The text exceeds the 4 × 6 safe area and will be clipped to fit on a single label. Would you like to proceed with printing the visible portion?"
+        message={`The text exceeds the ${draft.profile === '4x6' ? '4 × 6' : '2 × 1'} safe area and will be clipped to fit on a single label. Would you like to proceed with printing the visible portion?`}
         confirmLabel="Print Clipped Label"
         cancelLabel="Cancel"
         onConfirm={handleConfirmClipped}
@@ -218,7 +239,7 @@ export const App: React.FC = () => {
       <ConfirmDialog
         isOpen={activeDialog === 'confirm-offline'}
         title="Printer Offline"
-        message={`The printer "${selectedQueue?.displayName || 'SP410'}" is currently reported offline or unavailable by the operating system. Send to queue anyway? It may print when reconnected.`}
+        message={`The printer "${selectedQueues[activeProfile]?.displayName || (activeProfile === '4x6' ? 'SP410' : 'SP310')}" is currently reported offline or unavailable by the operating system. Send to queue anyway? It may print when reconnected.`}
         confirmLabel="Send to Queue"
         cancelLabel="Cancel"
         onConfirm={handleConfirmClipped}
@@ -247,7 +268,7 @@ export const App: React.FC = () => {
       <ConfirmDialog
         isOpen={activeDialog === 'confirm-reset'}
         title="Restore Factory Defaults?"
-        message="This will reset your preferred orientation, font family, font size, alignment, and printer selection to initial defaults. Your current text will be preserved."
+        message="This will reset both label profiles, their printer selections, and formatting to initial defaults. Your current text will be preserved."
         confirmLabel="Restore Defaults"
         cancelLabel="Cancel"
         isDestructive={true}

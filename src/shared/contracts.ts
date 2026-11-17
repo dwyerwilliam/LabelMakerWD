@@ -1,9 +1,19 @@
 export type Orientation = 'portrait' | 'landscape';
 export type Alignment = 'left' | 'center' | 'right';
+export type PrinterProfile = '4x6' | '2x1';
+
+export interface ProfilePreferences {
+  orientation: Orientation;
+  fontFamily: string;
+  fontSizePt: number;
+  alignment: Alignment;
+  printer: PrinterChoice | null;
+}
 
 export interface LabelDraft {
   revision: number;
   text: string;                 // LF newlines; tabs expanded to four spaces
+  profile: PrinterProfile;
   orientation: Orientation;
   preferredFontFamily: string;
   resolvedFontFamily: string;   // actual family used in preview
@@ -16,18 +26,17 @@ export interface PrinterChoice {
   deviceName: string;           // exact OS queue identifier, never display name
   platform: 'win32' | 'darwin';
   identityFingerprint: string;  // model/driver/port metadata when available
-  manualSp410Confirmed: boolean;
+  manualProfileConfirmed: boolean;
   usbConfirmed: boolean;
 }
 
-export interface PreferencesV1 {
-  schemaVersion: 1;
-  orientation: Orientation;
-  fontFamily: string;
-  fontSizePt: number;
-  alignment: Alignment;
-  printer: PrinterChoice | null;
+export interface PreferencesV2 {
+  schemaVersion: 2;
+  activeProfile: PrinterProfile;
+  profiles: Record<PrinterProfile, ProfilePreferences>;
 }
+
+export type PreferencesUpdate = Partial<Pick<PreferencesV2, 'activeProfile' | 'profiles'>>;
 
 export interface LayoutFingerprint {
   logicalWidthPt: number;
@@ -41,6 +50,7 @@ export interface PrintSnapshot {
   requestId: string;
   draftRevision: number;
   text: string;
+  profile: PrinterProfile;
   orientation: Orientation;
   resolvedFontFamily: string;
   fontSizePt: number;
@@ -73,7 +83,7 @@ export interface NormalizedQueue {
   paperDimensionsMm?: { width: number; height: number };
   hardMarginsMm?: { left: number; top: number; right: number; bottom: number };
   resolutionDpi?: { x: number; y: number };
-  isEligibleSp410: boolean;
+  profile: PrinterProfile | null;
   requiresManualConfirmation: boolean;
   queryTimestamp: number;
 }

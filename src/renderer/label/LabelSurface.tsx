@@ -1,9 +1,10 @@
-import React, { forwardRef } from 'react';
-import type { Alignment, Orientation } from '@shared/contracts';
+import React, { forwardRef, useImperativeHandle, useLayoutEffect, useRef } from 'react';
+import type { Alignment, Orientation, PrinterProfile } from '@shared/contracts';
 import './label.css';
 
 export interface LabelSurfaceProps {
   text: string;
+  profile?: PrinterProfile;
   orientation: Orientation;
   fontFamily: string;
   fontSizePt: number;
@@ -21,6 +22,7 @@ export const LabelSurface = forwardRef<HTMLDivElement, LabelSurfaceProps>(
   (
     {
       text,
+      profile = '4x6',
       orientation,
       fontFamily,
       fontSizePt,
@@ -35,8 +37,23 @@ export const LabelSurface = forwardRef<HTMLDivElement, LabelSurfaceProps>(
     },
     ref
   ) => {
-    const isPortrait = orientation === 'portrait';
+    const editorRef = useRef<HTMLDivElement>(null);
+    const isSmallLandscape = profile === '2x1';
+    const isPortrait = !isSmallLandscape && orientation === 'portrait';
     const isEmpty = text.length === 0;
+
+    useImperativeHandle(ref, () => editorRef.current!, []);
+
+    // Keep the live editor synchronized when text changes externally, while
+    // leaving the active caret-owned DOM alone during normal typing.
+    useLayoutEffect(() => {
+      if (!isEditing || !editorRef.current || document.activeElement === editorRef.current) return;
+
+      const currentText = editorRef.current.innerText || editorRef.current.textContent || '';
+      if (currentText !== text) {
+        editorRef.current.textContent = text;
+      }
+    }, [isEditing, text]);
 
     const textStyle: React.CSSProperties = {
       fontFamily: `"${fontFamily}", sans-serif`,
@@ -47,7 +64,9 @@ export const LabelSurface = forwardRef<HTMLDivElement, LabelSurfaceProps>(
 
     const safeAreaClass = [
       'label-safe-area',
-      isPortrait ? 'label-safe-area-portrait' : 'label-safe-area-landscape',
+      isSmallLandscape
+        ? 'label-safe-area-2x1'
+        : isPortrait ? 'label-safe-area-portrait' : 'label-safe-area-landscape',
       overflow ? 'has-overflow' : '',
     ]
       .filter(Boolean)
@@ -68,7 +87,7 @@ export const LabelSurface = forwardRef<HTMLDivElement, LabelSurfaceProps>(
     const content = (
       <div className={safeAreaClass} style={safeAreaStyle}>
         <div
-          ref={ref}
+          ref={editorRef}
           className={textContainerClass}
           style={textStyle}
           contentEditable={isEditing}
@@ -89,15 +108,28 @@ export const LabelSurface = forwardRef<HTMLDivElement, LabelSurfaceProps>(
           onPaste={onPaste}
           onBlur={onBlur}
         >
-          {text}
+          {!isEditing ? text : undefined}
         </div>
       </div>
     );
+
+    if (isSmallLandscape) {
+      return (
+        <div
+          className={`label-sheet-2x1 ${!isPrintMode ? 'preview-mode' : ''}`}
+          data-profile="2x1"
+          data-orientation="landscape"
+        >
+          {content}
+        </div>
+      );
+    }
 
     if (isPortrait) {
       return (
         <div
           className={`label-sheet-portrait ${!isPrintMode ? 'preview-mode' : ''}`}
+          data-profile="4x6"
           data-orientation="portrait"
         >
           {content}
@@ -105,15 +137,28 @@ export const LabelSurface = forwardRef<HTMLDivElement, LabelSurfaceProps>(
       );
     }
 
-    // Landscape orientation: rotate 90deg clockwise into 4x6 portrait stock
+    if (isPrintMode) {
+      // Printing targets portrait 4 × 6 stock. Rotate the logical landscape
+      // composition only in the hidden print renderer.
+      return (
+        <div
+          className="label-sheet-landscape label-sheet-landscape-physical"
+          data-profile="4x6"
+          data-orientation="landscape"
+        >
+          <div className="label-landscape-rotation-wrapper">{content}</div>
+        </div>
+      );
+    }
+
+    // Editing stays horizontal so the text remains upright and easy to edit.
     return (
       <div
-        className={`label-sheet-landscape ${!isPrintMode ? 'preview-mode' : ''}`}
+        className="label-sheet-landscape preview-mode"
+        data-profile="4x6"
         data-orientation="landscape"
       >
-        <div className="label-landscape-rotation-wrapper">
-          {content}
-        </div>
+        {content}
       </div>
     );
   }

@@ -44,4 +44,14 @@ describe('Geometry and Units', () => {
     const expected = Math.min(1000 / 384, 800 / 576);
     expect(scale).toBeCloseTo(expected, 4);
   });
+
+  it('provides the fixed landscape DYMO 30334 geometry for the 2x1 profile', () => {
+    const dims = getPageDimensions('2x1');
+    expect(dims.widthPt).toBe(162);
+    expect(dims.heightPt).toBe(90);
+    expect(dims.widthPx).toBe(216);
+    expect(dims.heightPx).toBe(120);
+    expect(dims.textWidthPt).toBe(144);
+    expect(dims.textHeightPt).toBe(72);
+  });
 });

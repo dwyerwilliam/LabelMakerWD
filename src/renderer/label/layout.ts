@@ -1,7 +1,29 @@
-import type { LayoutFingerprint, Orientation } from '@shared/contracts';
+import type { LayoutFingerprint, Orientation, PrinterProfile } from '@shared/contracts';
 import { getPageDimensions } from './geometry';
 
 const PT_PER_PX = 72 / 96; // 0.75
+
+function getAncestorVisualScale(element: HTMLElement): number {
+  let scale = 1;
+  let ancestor = element.parentElement;
+
+  while (ancestor) {
+    const transform = window.getComputedStyle(ancestor).transform;
+    if (transform && transform !== 'none') {
+      const matrix = transform.match(/^matrix\(([^)]+)\)$/);
+      if (matrix) {
+        const values = matrix[1].split(',').map(Number);
+        const [a = 1, b = 0, c = 0, d = 1] = values;
+        const scaleX = Math.hypot(a, b);
+        const scaleY = Math.hypot(c, d);
+        scale *= (scaleX + scaleY) / 2;
+      }
+    }
+    ancestor = ancestor.parentElement;
+  }
+
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
+}
 
 export function pxToPt(px: number): number {
   return px * PT_PER_PX;
@@ -13,17 +35,24 @@ export function ptToPx(pt: number): number {
 
 export function measureLayoutFingerprint(
   textContainerEl: HTMLElement,
-  orientation: Orientation
+  profileOrOrientation: PrinterProfile | Orientation,
+  requestedOrientation: Orientation = 'portrait',
+  physicalLandscapeRotation = false
 ): LayoutFingerprint {
-  const dims = getPageDimensions(orientation);
+  const isLegacyOrientation = profileOrOrientation === 'portrait' || profileOrOrientation === 'landscape';
+  const profile: PrinterProfile = isLegacyOrientation ? '4x6' : profileOrOrientation;
+  const orientation: Orientation = isLegacyOrientation ? profileOrOrientation : requestedOrientation;
+  const dims = getPageDimensions(profile, orientation);
   const safeHeightPx = dims.textHeightPx;
   const safeWidthPx = dims.textWidthPx;
+  const visualScale = getAncestorVisualScale(textContainerEl);
 
   // Measure content bounds
   const scrollHeight = textContainerEl.scrollHeight;
   const clientHeight = textContainerEl.clientHeight;
-  const boundingHeight = textContainerEl.getBoundingClientRect().height;
-  const contentHeightPx = Math.max(scrollHeight, clientHeight, boundingHeight);
+  // scrollHeight/clientHeight are in the element's untransformed coordinate
+  // space. getBoundingClientRect() includes the preview fit-to-window scale.
+  const contentHeightPx = Math.max(scrollHeight, clientHeight);
 
   // Overflow occurs if content height exceeds safe text area height (with 0.5px float tolerance)
   const overflow = contentHeightPx > safeHeightPx + 0.5;
@@ -35,9 +64,38 @@ export function measureLayoutFingerprint(
   const containerRect = textContainerEl.getBoundingClientRect();
   const textNode = textContainerEl.firstChild;
 
+  const toLogicalLineRect = (
+    lineMinX: number,
+    lineMinY: number,
+    lineMaxX: number,
+    lineMaxY: number
+  ) => {
+    const xPx = (lineMinX - containerRect.left) / visualScale;
+    const yPx = (lineMinY - containerRect.top) / visualScale;
+    const widthPx = (lineMaxX - lineMinX) / visualScale;
+    const heightPx = (lineMaxY - lineMinY) / visualScale;
+
+    if (physicalLandscapeRotation && orientation === 'landscape') {
+      const rotatedContainerWidthPx = containerRect.width / visualScale;
+      return {
+        x: pxToPt(yPx),
+        y: pxToPt(rotatedContainerWidthPx - xPx - widthPx),
+        width: pxToPt(heightPx),
+        height: pxToPt(widthPx),
+      };
+    }
+
+    return {
+      x: pxToPt(xPx),
+      y: pxToPt(yPx),
+      width: pxToPt(widthPx),
+      height: pxToPt(heightPx),
+    };
+  };
+
   if (textNode && textNode.nodeType === Node.TEXT_NODE && textNode.textContent) {
     const text = textNode.textContent;
-    let currentLineTop = -99999;
+    let currentLineCoordinate = -99999;
     let currentLineStart = 0;
     let lineMinX = 99999;
     let lineMaxX = -99999;
@@ -55,25 +113,27 @@ export function measureLayoutFingerprint(
         continue;
       }
 
-      // Check if this character is on a new line (y offset difference > half line height)
-      if (currentLineTop === -99999) {
-        currentLineTop = rect.top;
+      // Rotated landscape text advances along the physical y-axis, which is
+      // the source element's x-axis after rotation. Detect breaks on the
+      // corresponding coordinate before mapping back to logical landscape.
+      const lineCoordinate = physicalLandscapeRotation && orientation === 'landscape'
+        ? rect.left
+        : rect.top;
+
+      // Check if this character is on a new line (offset difference > half line height)
+      if (currentLineCoordinate === -99999) {
+        currentLineCoordinate = lineCoordinate;
         currentLineStart = i;
         lineMinX = rect.left;
         lineMaxX = rect.right;
         lineMinY = rect.top;
         lineMaxY = rect.bottom;
-      } else if (Math.abs(rect.top - currentLineTop) > 3) {
+      } else if (Math.abs(lineCoordinate - currentLineCoordinate) > 3) {
         // Line broke: record previous line
         lineTextOffsets.push(currentLineStart);
-        lineRectsPt.push({
-          x: pxToPt(lineMinX - containerRect.left),
-          y: pxToPt(lineMinY - containerRect.top),
-          width: pxToPt(lineMaxX - lineMinX),
-          height: pxToPt(lineMaxY - lineMinY),
-        });
+        lineRectsPt.push(toLogicalLineRect(lineMinX, lineMinY, lineMaxX, lineMaxY));
 
-        currentLineTop = rect.top;
+        currentLineCoordinate = lineCoordinate;
         currentLineStart = i;
         lineMinX = rect.left;
         lineMaxX = rect.right;
@@ -88,14 +148,9 @@ export function measureLayoutFingerprint(
     }
 
     // Push final line
-    if (currentLineTop !== -99999) {
+    if (currentLineCoordinate !== -99999) {
       lineTextOffsets.push(currentLineStart);
-      lineRectsPt.push({
-        x: pxToPt(lineMinX - containerRect.left),
-        y: pxToPt(lineMinY - containerRect.top),
-        width: pxToPt(lineMaxX - lineMinX),
-        height: pxToPt(lineMaxY - lineMinY),
-      });
+      lineRectsPt.push(toLogicalLineRect(lineMinX, lineMinY, lineMaxX, lineMaxY));
     }
   }
 
@@ -153,15 +208,12 @@ export function compareFingerprints(
 
     const r1 = f1.lineRectsPt[i];
     const r2 = f2.lineRectsPt[i];
-    if (
-      Math.abs(r1.x - r2.x) > tolerancePt ||
-      Math.abs(r1.y - r2.y) > tolerancePt ||
-      Math.abs(r1.width - r2.width) > tolerancePt ||
-      Math.abs(r1.height - r2.height) > tolerancePt
-    ) {
+    const fields = ['x', 'y', 'width', 'height'] as const;
+    const mismatchedField = fields.find((field) => Math.abs(r1[field] - r2[field]) > tolerancePt);
+    if (mismatchedField) {
       return {
         match: false,
-        reason: `Line ${i} rect mismatch exceeds tolerance of ${tolerancePt}pt`,
+        reason: `Line ${i} ${mismatchedField} mismatch: ${r1[mismatchedField].toFixed(3)} vs ${r2[mismatchedField].toFixed(3)}pt (tolerance ${tolerancePt}pt)`,
       };
     }
   }

@@ -1,4 +1,4 @@
-import type { NormalizedQueue, QueueStatus, TransportType } from '@shared/contracts';
+import type { NormalizedQueue, PrinterProfile, QueueStatus, TransportType } from '@shared/contracts';
 
 export interface PrinterCapabilities {
   paperDimensionsMm?: { width: number; height: number };
@@ -12,40 +12,30 @@ export function normalizePrinterName(name: string): string {
   return name.toLowerCase().replace(/[\s\-_]/g, '');
 }
 
-/**
- * Checks whether the printer identity corresponds to an iDPRT SP410 / SP410BT.
- * Matches:
- *  - 'sp410'
- *  - 'sp410bt'
- *  - 'idprtsp410'
- *  - 'idprtsp410bt'
- * Excludes:
- *  - 'sp310'
- *  - 'sp4100' or other numbers following sp410
- */
-export function isSp410Eligible(name: string, driver = '', model = ''): boolean {
+/** Classifies supported iDPRT queues without treating model prefixes as matches. */
+export function identifyPrinterProfile(name: string, driver = '', model = ''): PrinterProfile | null {
   const normName = normalizePrinterName(name);
   const normDriver = normalizePrinterName(driver);
   const normModel = normalizePrinterName(model);
 
   const combined = `${normName} ${normDriver} ${normModel}`;
 
-  // Explicitly exclude SP310
-  if (combined.includes('sp310')) {
-    return false;
-  }
+  const hasSp410 = /sp410(?!\d)/.test(combined);
+  const hasSp310 = /sp310(?!\d)/.test(combined);
 
-  // Check for sp410 followed by other digits (e.g. sp4100)
-  if (/sp410\d/.test(combined)) {
-    return false;
-  }
+  // Ambiguous metadata must never be routed to either profile.
+  if (hasSp410 === hasSp310) return null;
+  if (hasSp410) return '4x6';
+  if (hasSp310) return '2x1';
+  return null;
+}
 
-  // Must contain sp410
-  if (combined.includes('sp410')) {
-    return true;
-  }
+export function isSp410Eligible(name: string, driver = '', model = ''): boolean {
+  return identifyPrinterProfile(name, driver, model) === '4x6';
+}
 
-  return false;
+export function isSp310Eligible(name: string, driver = '', model = ''): boolean {
+  return identifyPrinterProfile(name, driver, model) === '2x1';
 }
 
 export function detectTransport(portName = '', deviceName = ''): TransportType {

@@ -4,8 +4,84 @@ import path from 'path';
 import { app } from 'electron';
 import type { PrinterCapabilities } from './printerAdapter';
 import { detectTransport } from './printerAdapter';
+import type { PrinterProfile } from '@shared/contracts';
+import { SP310_OUTPUT_HEIGHT_IN, SP310_OUTPUT_WIDTH_IN } from '@shared/defaults';
 
-export async function inspectWindowsPrinter(deviceName: string): Promise<PrinterCapabilities> {
+export interface WindowsPrinterRecord {
+  name: string;
+  displayName: string;
+  driverName: string;
+  portName: string;
+  isDefault: boolean;
+}
+
+/**
+ * Electron's printer enumeration can omit or under-report Windows queues.
+ * This read-only fallback uses the same PrintManagement data Windows exposes
+ * in Settings and merges only missing/incomplete queue metadata.
+ */
+export function enumerateWindowsPrinters(): Promise<WindowsPrinterRecord[]> {
+  return new Promise((resolve) => {
+    const script = `
+      $rows = @()
+      try {
+        $rows = @(Get-Printer -ErrorAction Stop |
+          Select-Object Name, DriverName, PortName, Default)
+      } catch {}
+
+      # Some Windows environments deny PrintManagement/CIM access to the app,
+      # and others return only a partial queue list. The printer queue registry
+      # still exposes every installed queue name and port, so always merge it.
+      $registryRows = @(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Print\\Printers\\*' -ErrorAction SilentlyContinue |
+        Where-Object { $_.PSChildName -and $_.Port } |
+        Select-Object @{Name='Name';Expression={$_.PSChildName}}, @{Name='DriverName';Expression={$_.Driver}}, @{Name='PortName';Expression={$_.Port}}, @{Name='Default';Expression={$false}})
+
+      @($rows) + @($registryRows) | ConvertTo-Json -Compress
+    `;
+    const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    let output = '';
+    const timer = setTimeout(() => {
+      ps.kill();
+      resolve([]);
+    }, 8000);
+
+    ps.stdout.on('data', (chunk) => {
+      output += chunk.toString();
+    });
+    ps.on('close', () => {
+      clearTimeout(timer);
+      try {
+        const parsed = JSON.parse(output.trim() || '[]');
+        const rows = Array.isArray(parsed) ? parsed : [parsed];
+        const byName = new Map<string, WindowsPrinterRecord>();
+        for (const row of rows) {
+          if (!row || typeof row.Name !== 'string') continue;
+          const key = row.Name.toLowerCase();
+          const existing = byName.get(key);
+          byName.set(key, {
+            name: row.Name,
+            displayName: row.Name,
+            driverName: row.DriverName || existing?.driverName || '',
+            portName: row.PortName || existing?.portName || '',
+            isDefault: row.Default === true || existing?.isDefault === true,
+          });
+        }
+        resolve([...byName.values()]);
+      } catch {
+        resolve([]);
+      }
+    });
+    ps.on('error', () => {
+      clearTimeout(timer);
+      resolve([]);
+    });
+  });
+}
+
+export async function inspectWindowsPrinter(deviceName: string, profile: PrinterProfile): Promise<PrinterCapabilities> {
   // 1. Check for bundled or local native helper
   const candidatePaths = [
     path.join(process.resourcesPath || '', 'native-bin', 'inspect_printer.exe'),
@@ -25,7 +101,7 @@ export async function inspectWindowsPrinter(deviceName: string): Promise<Printer
   }
 
   // 2. Fallback using PowerShell Get-Printer / WMI query
-  return queryPrinterViaPowerShell(deviceName);
+  return queryPrinterViaPowerShell(deviceName, profile);
 }
 
 function runNativeHelper(helperPath: string, deviceName: string): Promise<PrinterCapabilities | null> {
@@ -72,7 +148,7 @@ function runNativeHelper(helperPath: string, deviceName: string): Promise<Printe
   });
 }
 
-function queryPrinterViaPowerShell(deviceName: string): Promise<PrinterCapabilities> {
+function queryPrinterViaPowerShell(deviceName: string, profile: PrinterProfile): Promise<PrinterCapabilities> {
   return new Promise((resolve) => {
     // Escape single quotes for PowerShell
     const escapedName = deviceName.replace(/'/g, "''");
@@ -107,7 +183,7 @@ function queryPrinterViaPowerShell(deviceName: string): Promise<PrinterCapabilit
     let out = '';
     const timer = setTimeout(() => {
       ps.kill();
-      resolve(createDefaultCapabilities(deviceName));
+      resolve(createDefaultCapabilities(deviceName, profile));
     }, 8000);
 
     ps.stdout.on('data', (d) => {
@@ -122,7 +198,9 @@ function queryPrinterViaPowerShell(deviceName: string): Promise<PrinterCapabilit
           resolve({
             status: data.Status || 'ready',
             transport: data.Transport || detectTransport(data.Port, deviceName),
-            paperDimensionsMm: { width: 101.6, height: 152.4 },
+            paperDimensionsMm: profile === '4x6'
+              ? { width: 101.6, height: 152.4 }
+              : { width: SP310_OUTPUT_WIDTH_IN * 25.4, height: SP310_OUTPUT_HEIGHT_IN * 25.4 },
             hardMarginsMm: { left: 0, top: 0, right: 0, bottom: 0 },
             resolutionDpi: { x: 203, y: 203 },
           });
@@ -130,21 +208,23 @@ function queryPrinterViaPowerShell(deviceName: string): Promise<PrinterCapabilit
         }
       } catch {}
 
-      resolve(createDefaultCapabilities(deviceName));
+      resolve(createDefaultCapabilities(deviceName, profile));
     });
 
     ps.on('error', () => {
       clearTimeout(timer);
-      resolve(createDefaultCapabilities(deviceName));
+      resolve(createDefaultCapabilities(deviceName, profile));
     });
   });
 }
 
-function createDefaultCapabilities(deviceName: string): PrinterCapabilities {
+function createDefaultCapabilities(deviceName: string, profile: PrinterProfile): PrinterCapabilities {
   return {
     status: 'ready',
     transport: detectTransport('', deviceName),
-    paperDimensionsMm: { width: 101.6, height: 152.4 },
+    paperDimensionsMm: profile === '4x6'
+      ? { width: 101.6, height: 152.4 }
+      : { width: SP310_OUTPUT_WIDTH_IN * 25.4, height: SP310_OUTPUT_HEIGHT_IN * 25.4 },
     hardMarginsMm: { left: 0, top: 0, right: 0, bottom: 0 },
     resolutionDpi: { x: 203, y: 203 },
   };

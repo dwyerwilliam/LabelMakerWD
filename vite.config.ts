@@ -57,7 +57,6 @@ export default defineConfig({
         },
       },
       {
-        entry: 'src/preload/index.ts',
         onstart: (startup) => {
           startup.reload();
         },
@@ -66,24 +65,29 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron/preload',
             rollupOptions: {
+              input: path.resolve(__dirname, 'src/preload/index.ts'),
               external: ['electron'],
               output: {
-                entryFileNames: 'index.js',
+                format: 'cjs',
+                inlineDynamicImports: true,
+                entryFileNames: 'index.cjs',
               },
             },
           },
         },
       },
       {
-        entry: 'src/preload/print.ts',
         vite: {
           resolve: { alias },
           build: {
             outDir: 'dist-electron/preload',
             rollupOptions: {
+              input: path.resolve(__dirname, 'src/preload/print.ts'),
               external: ['electron'],
               output: {
-                entryFileNames: 'print.js',
+                format: 'cjs',
+                inlineDynamicImports: true,
+                entryFileNames: 'print.cjs',
               },
             },
           },

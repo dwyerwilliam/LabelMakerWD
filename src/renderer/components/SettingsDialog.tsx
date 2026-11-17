@@ -1,64 +1,50 @@
 import React, { useState } from 'react';
-import type { NormalizedQueue } from '@shared/contracts';
+import type { NormalizedQueue, PrinterProfile } from '@shared/contracts';
 import { useDeviceStore } from '../stores/deviceStore';
-import { usePreferencesStore } from '../stores/preferencesStore';
 import { useUIStore } from '../stores/uiStore';
 import { enumerateSystemFonts } from '../fonts/fontCatalog';
 
 export interface SettingsDialogProps {
   onRefreshPrinters: () => void;
   onRestoreDefaults: () => void;
+  onSelectPrinter: (
+    profile: PrinterProfile,
+    deviceName: string,
+    manualConfirm: boolean
+  ) => Promise<NormalizedQueue | null>;
 }
+
+const PROFILE_INFO: Record<PrinterProfile, { label: string; model: string; stock: string }> = {
+  '4x6': { label: '4 × 6', model: 'SP410', stock: '4 × 6 inch thermal stock' },
+  '2x1': { label: '2 × 1', model: 'SP310', stock: 'DYMO 30334 · 2¼ × 1¼ inch stock' },
+};
 
 export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   onRefreshPrinters,
   onRestoreDefaults,
+  onSelectPrinter,
 }) => {
   const { activeDialog, closeDialog } = useUIStore();
-  const { queues, selectedQueue, selectQueue } = useDeviceStore();
-  const { preferences, update } = usePreferencesStore();
-
-  const [renamedMode, setRenamedMode] = useState(false);
-  const [selectedRenamedQueue, setSelectedRenamedQueue] = useState<string>('');
+  const { queues, selectedQueues } = useDeviceStore();
+  const [renamedProfile, setRenamedProfile] = useState<PrinterProfile | null>(null);
+  const [selectedRenamedQueue, setSelectedRenamedQueue] = useState('');
   const [usbConfirmed, setUsbConfirmed] = useState(false);
   const [stockConfirmed, setStockConfirmed] = useState(false);
   const [refreshFontsSuccess, setRefreshFontsSuccess] = useState(false);
 
   if (activeDialog !== 'settings') return null;
 
-  const eligibleQueues = queues.filter((q) => q.isEligibleSp410);
-  const nonEligibleQueues = queues.filter((q) => !q.isEligibleSp410);
-
-  const handleSelectEligible = (queue: NormalizedQueue) => {
-    selectQueue(queue.deviceName);
-    update({
-      printer: {
-        deviceName: queue.deviceName,
-        platform: process.platform === 'darwin' ? 'darwin' : 'win32',
-        identityFingerprint: `${queue.model}:${queue.driver}:${queue.port}`,
-        manualSp410Confirmed: false,
-        usbConfirmed: queue.transport === 'usb',
-      },
-    });
+  const handleSelectEligible = async (profile: PrinterProfile, queue: NormalizedQueue) => {
+    await onSelectPrinter(profile, queue.deviceName, false);
   };
 
-  const handleConfirmRenamed = () => {
-    if (!selectedRenamedQueue || !usbConfirmed || !stockConfirmed) return;
-
-    const queue = queues.find((q) => q.deviceName === selectedRenamedQueue);
-    if (!queue) return;
-
-    selectQueue(queue.deviceName);
-    update({
-      printer: {
-        deviceName: queue.deviceName,
-        platform: process.platform === 'darwin' ? 'darwin' : 'win32',
-        identityFingerprint: `${queue.model}:${queue.driver}:${queue.port}`,
-        manualSp410Confirmed: true,
-        usbConfirmed: true,
-      },
-    });
-    setRenamedMode(false);
+  const handleConfirmRenamed = async () => {
+    if (!renamedProfile || !selectedRenamedQueue || !usbConfirmed || !stockConfirmed) return;
+    await onSelectPrinter(renamedProfile, selectedRenamedQueue, true);
+    setRenamedProfile(null);
+    setSelectedRenamedQueue('');
+    setUsbConfirmed(false);
+    setStockConfirmed(false);
   };
 
   const handleRefreshFonts = async () => {
@@ -67,219 +53,110 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     setTimeout(() => setRefreshFontsSuccess(false), 2500);
   };
 
+  const unassignedQueues = queues.filter((queue) => queue.profile === null);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-lg bg-white shadow-2xl dark:bg-slate-900">
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Settings</h2>
-          <button
-            type="button"
-            onClick={closeDialog}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-          >
-            ✕
-          </button>
+          <button type="button" onClick={closeDialog} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">✕</button>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-          {/* Printer Selection Section */}
+        <div className="flex-1 space-y-6 overflow-y-auto px-6 py-4">
           <section>
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                iDPRT SP410 Print Queue
-              </h3>
-              <button
-                type="button"
-                onClick={onRefreshPrinters}
-                className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
-              >
-                Scan Printers
-              </button>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Printer profiles</h3>
+                <p className="mt-1 text-xs text-slate-500">Choose a USB queue for each stock profile. The app never falls back to the OS default printer.</p>
+              </div>
+              <button type="button" onClick={onRefreshPrinters} className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400">Scan Printers</button>
             </div>
 
-            <p className="mt-1 text-xs text-slate-500">
-              Only iDPRT SP410 / SP410BT queues with 4 × 6 inch thermal stock over USB are supported.
-            </p>
+            <div className="mt-4 space-y-4">
+              {(['4x6', '2x1'] as PrinterProfile[]).map((profile) => {
+                const info = PROFILE_INFO[profile];
+                const eligibleQueues = queues.filter((queue) => queue.profile === profile);
+                const selectedQueue = selectedQueues[profile];
+                const isRenamedOpen = renamedProfile === profile;
 
-            <div className="mt-3 space-y-2">
-              {eligibleQueues.map((q) => {
-                const isSelected = selectedQueue?.deviceName === q.deviceName;
                 return (
-                  <div
-                    key={q.deviceName}
-                    onClick={() => handleSelectEligible(q)}
-                    className={`flex cursor-pointer items-center justify-between rounded-lg border p-3 transition-colors ${
-                      isSelected
-                        ? 'border-blue-500 bg-blue-50/50 dark:border-blue-500 dark:bg-blue-900/20'
-                        : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm text-slate-900 dark:text-white">
-                          {q.displayName}
-                        </span>
-                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300">
-                          SP410 Match
-                        </span>
-                        {q.transport === 'usb' && (
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                            USB
-                          </span>
-                        )}
+                  <div key={profile} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900 dark:text-white">{info.label} · iDPRT {info.model}</h4>
+                        <p className="mt-0.5 text-[11px] text-slate-500">{info.stock} · fixed USB profile</p>
                       </div>
-                      <div className="mt-0.5 text-xs text-slate-500">
-                        Port: {q.port || 'Unknown'} | Driver: {q.driver || 'Default'} | Status: {q.status}
-                      </div>
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">{profile === '4x6' ? 'SP410 Match' : 'SP310 Match'}</span>
                     </div>
-                    <input
-                      type="radio"
-                      name="printer"
-                      checked={isSelected}
-                      onChange={() => handleSelectEligible(q)}
-                      className="h-4 w-4 text-blue-600"
-                    />
+
+                    <div className="mt-3 space-y-2">
+                      {eligibleQueues.map((queue) => {
+                        const isSelected = selectedQueue?.deviceName === queue.deviceName;
+                        return (
+                          <button
+                            key={queue.deviceName}
+                            type="button"
+                            onClick={() => void handleSelectEligible(profile, queue)}
+                            className={`flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors ${isSelected ? 'border-blue-500 bg-blue-50/50 dark:border-blue-500 dark:bg-blue-900/20' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'}`}
+                          >
+                            <span>
+                              <span className="block text-sm font-semibold text-slate-900 dark:text-white">{queue.displayName}</span>
+                              <span className="mt-0.5 block text-xs text-slate-500">Port: {queue.port || 'Unknown'} | Driver: {queue.driver || 'Default'} | Status: {queue.status}</span>
+                            </span>
+                            <input type="radio" aria-label={`Use ${queue.displayName} for ${info.label}`} checked={isSelected} readOnly className="h-4 w-4 text-blue-600" />
+                          </button>
+                        );
+                      })}
+                      {eligibleQueues.length === 0 && (
+                        <div className="rounded-lg border border-dashed border-slate-300 p-3 text-center text-xs text-slate-500 dark:border-slate-700">No matching {info.model} printer detected.</div>
+                      )}
+                    </div>
+
+                    {!isRenamedOpen ? (
+                      <button type="button" onClick={() => setRenamedProfile(profile)} className="mt-3 text-xs text-blue-600 hover:underline dark:text-blue-400">Choose a renamed {info.model} queue…</button>
+                    ) : (
+                      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/40 p-3 dark:border-amber-800 dark:bg-amber-950/20">
+                        <h5 className="text-xs font-semibold text-amber-900 dark:text-amber-200">Manual {info.model} Queue Override</h5>
+                        <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">Use this only when the operating system queue was renamed.</p>
+                        <select value={selectedRenamedQueue} onChange={(event) => setSelectedRenamedQueue(event.target.value)} className="mt-2 w-full rounded border border-slate-300 bg-white p-1.5 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                          <option value="">-- Select installed printer --</option>
+                          {unassignedQueues.map((queue) => <option key={queue.deviceName} value={queue.deviceName}>{queue.displayName} ({queue.port || 'Port unknown'})</option>)}
+                        </select>
+                        <div className="mt-3 space-y-1.5 text-xs">
+                          <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={usbConfirmed} onChange={(event) => setUsbConfirmed(event.target.checked)} className="rounded" />This printer is connected via USB</label>
+                          <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300"><input type="checkbox" checked={stockConfirmed} onChange={(event) => setStockConfirmed(event.target.checked)} className="rounded" />This printer has {info.stock}</label>
+                        </div>
+                        <div className="mt-3 flex gap-2">
+                          <button type="button" disabled={!selectedRenamedQueue || !usbConfirmed || !stockConfirmed} onClick={() => void handleConfirmRenamed()} className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">Use as {info.model}</button>
+                          <button type="button" onClick={() => setRenamedProfile(null)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-700 dark:border-slate-600 dark:text-slate-300">Cancel</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
-
-              {eligibleQueues.length === 0 && (
-                <div className="rounded-lg border border-dashed border-slate-300 p-4 text-center text-xs text-slate-500 dark:border-slate-700">
-                  No iDPRT SP410 printers detected. Ensure your SP410 is powered on and connected via USB.
-                </div>
-              )}
-            </div>
-
-            {/* Renamed Printer Override */}
-            <div className="mt-4">
-              {!renamedMode ? (
-                <button
-                  type="button"
-                  onClick={() => setRenamedMode(true)}
-                  className="text-xs text-blue-600 hover:underline dark:text-blue-400"
-                >
-                  Choose a renamed SP410 queue…
-                </button>
-              ) : (
-                <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-3 dark:border-amber-800 dark:bg-amber-950/20">
-                  <h4 className="text-xs font-semibold text-amber-900 dark:text-amber-200">
-                    Manual SP410 Queue Override
-                  </h4>
-                  <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">
-                    If your SP410 printer queue has been renamed in your operating system, select it below:
-                  </p>
-
-                  <select
-                    value={selectedRenamedQueue}
-                    onChange={(e) => setSelectedRenamedQueue(e.target.value)}
-                    className="mt-2 w-full rounded border border-slate-300 bg-white p-1.5 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                  >
-                    <option value="">-- Select installed printer --</option>
-                    {nonEligibleQueues.map((q) => (
-                      <option key={q.deviceName} value={q.deviceName}>
-                        {q.displayName} ({q.port || 'Port unknown'})
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="mt-3 space-y-1.5 text-xs">
-                    <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={usbConfirmed}
-                        onChange={(e) => setUsbConfirmed(e.target.checked)}
-                        className="rounded"
-                      />
-                      <span>This printer is connected via USB</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={stockConfirmed}
-                        onChange={(e) => setStockConfirmed(e.target.checked)}
-                        className="rounded"
-                      />
-                      <span>This printer is loaded with 4 × 6 inch thermal stock</span>
-                    </label>
-                  </div>
-
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      type="button"
-                      disabled={!selectedRenamedQueue || !usbConfirmed || !stockConfirmed}
-                      onClick={handleConfirmRenamed}
-                      className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                    >
-                      Use as SP410
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRenamedMode(false)}
-                      className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-700 dark:border-slate-600 dark:text-slate-300"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           </section>
 
-          {/* Typography & Fonts Section */}
           <section className="border-t border-slate-200 pt-4 dark:border-slate-800">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-              System Fonts
-            </h3>
-            <p className="mt-1 text-xs text-slate-500">
-              Label Maker enumerates local fonts installed on your computer.
-            </p>
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">System Fonts</h3>
+            <p className="mt-1 text-xs text-slate-500">Label Maker enumerates local fonts installed on your computer.</p>
             <div className="mt-2 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleRefreshFonts}
-                className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                Refresh Fonts
-              </button>
-              {refreshFontsSuccess && (
-                <span className="text-xs text-emerald-600 dark:text-emerald-400">
-                  Fonts reloaded successfully!
-                </span>
-              )}
+              <button type="button" onClick={() => void handleRefreshFonts()} className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">Refresh Fonts</button>
+              {refreshFontsSuccess && <span className="text-xs text-emerald-600 dark:text-emerald-400">Fonts reloaded successfully!</span>}
             </div>
           </section>
 
-          {/* Reset Defaults Section */}
           <section className="border-t border-slate-200 pt-4 dark:border-slate-800">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-              Restore Defaults
-            </h3>
-            <p className="mt-1 text-xs text-slate-500">
-              Reset preferred orientation, font, size, alignment, and printer selection to initial defaults. Your current label text will be preserved.
-            </p>
-            <div className="mt-2">
-              <button
-                type="button"
-                onClick={onRestoreDefaults}
-                className="rounded border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/20"
-              >
-                Restore Factory Defaults…
-              </button>
-            </div>
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Restore Defaults</h3>
+            <p className="mt-1 text-xs text-slate-500">Reset both profiles, their formatting, and printer selections. Current label text is preserved.</p>
+            <button type="button" onClick={onRestoreDefaults} className="mt-2 rounded border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/20">Restore Factory Defaults…</button>
           </section>
         </div>
 
-        {/* Footer */}
         <div className="flex justify-end border-t border-slate-200 px-6 py-3 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={closeDialog}
-            className="rounded bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-          >
-            Done
-          </button>
+          <button type="button" onClick={closeDialog} className="rounded bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">Done</button>
         </div>
       </div>
     </div>

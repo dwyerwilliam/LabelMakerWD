@@ -1,4 +1,4 @@
-import type { Orientation } from '@shared/contracts';
+import type { Orientation, PrinterProfile } from '@shared/contracts';
 import {
   PAGE_PORTRAIT_WIDTH_PT,
   PAGE_PORTRAIT_HEIGHT_PT,
@@ -18,6 +18,14 @@ import {
   TEXT_RECT_LANDSCAPE_HEIGHT_PT,
   TEXT_RECT_LANDSCAPE_WIDTH_PX,
   TEXT_RECT_LANDSCAPE_HEIGHT_PX,
+  SP310_PAGE_WIDTH_PT,
+  SP310_PAGE_HEIGHT_PT,
+  SP310_PAGE_WIDTH_PX,
+  SP310_PAGE_HEIGHT_PX,
+  SP310_TEXT_WIDTH_PT,
+  SP310_TEXT_HEIGHT_PT,
+  SP310_TEXT_WIDTH_PX,
+  SP310_TEXT_HEIGHT_PX,
 } from '@shared/defaults';
 
 export interface PageDimensions {
@@ -33,7 +41,31 @@ export interface PageDimensions {
   textHeightPx: number;
 }
 
-export function getPageDimensions(orientation: Orientation): PageDimensions {
+export function getPageDimensions(orientation: Orientation): PageDimensions;
+export function getPageDimensions(profile: PrinterProfile, orientation?: Orientation): PageDimensions;
+export function getPageDimensions(
+  profileOrOrientation: PrinterProfile | Orientation,
+  requestedOrientation: Orientation = 'portrait'
+): PageDimensions {
+  const isLegacyOrientation = profileOrOrientation === 'portrait' || profileOrOrientation === 'landscape';
+  const profile: PrinterProfile = isLegacyOrientation ? '4x6' : profileOrOrientation;
+  const orientation: Orientation = isLegacyOrientation ? profileOrOrientation : requestedOrientation;
+
+  if (profile === '2x1') {
+    return {
+      widthPt: SP310_PAGE_WIDTH_PT,
+      heightPt: SP310_PAGE_HEIGHT_PT,
+      widthPx: SP310_PAGE_WIDTH_PX,
+      heightPx: SP310_PAGE_HEIGHT_PX,
+      safeInsetPt: SAFE_INSET_PT,
+      safeInsetPx: SAFE_INSET_PX,
+      textWidthPt: SP310_TEXT_WIDTH_PT,
+      textHeightPt: SP310_TEXT_HEIGHT_PT,
+      textWidthPx: SP310_TEXT_WIDTH_PX,
+      textHeightPx: SP310_TEXT_HEIGHT_PX,
+    };
+  }
+
   if (orientation === 'portrait') {
     return {
       widthPt: PAGE_PORTRAIT_WIDTH_PT,
@@ -70,12 +102,21 @@ export function getPageDimensions(orientation: Orientation): PageDimensions {
 export function calculateFitScale(
   containerWidth: number,
   containerHeight: number,
-  orientation: Orientation,
+  profileOrOrientation: PrinterProfile | Orientation,
+  orientationOrPadding: Orientation | number = 0,
   paddingPx = 32
 ): number {
-  const { widthPx, heightPx } = getPageDimensions(orientation);
-  const availableW = Math.max(100, containerWidth - paddingPx * 2);
-  const availableH = Math.max(100, containerHeight - paddingPx * 2);
+  const isLegacyOrientation = profileOrOrientation === 'portrait' || profileOrOrientation === 'landscape';
+  const profile: PrinterProfile = isLegacyOrientation ? '4x6' : profileOrOrientation;
+  const orientation: Orientation = isLegacyOrientation
+    ? profileOrOrientation
+    : typeof orientationOrPadding === 'number' ? 'landscape' : orientationOrPadding;
+  const effectivePadding = isLegacyOrientation && typeof orientationOrPadding === 'number'
+    ? orientationOrPadding
+    : paddingPx;
+  const { widthPx, heightPx } = getPageDimensions(profile, orientation);
+  const availableW = Math.max(100, containerWidth - effectivePadding * 2);
+  const availableH = Math.max(100, containerHeight - effectivePadding * 2);
 
   const scaleW = availableW / widthPx;
   const scaleH = availableH / heightPx;

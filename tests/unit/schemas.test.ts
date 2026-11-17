@@ -3,7 +3,7 @@ import {
   fontSizePtSchema,
   copiesSchema,
   labelTextSchema,
-  preferencesV1Schema,
+  preferencesV2Schema,
 } from '@shared/schemas';
 
 describe('Zod Contracts & Validation Schemas', () => {
@@ -41,19 +41,31 @@ describe('Zod Contracts & Validation Schemas', () => {
 
   it('validates complete preferences object', () => {
     const valid = {
-      schemaVersion: 1,
-      orientation: 'portrait',
-      fontFamily: 'Arial',
-      fontSizePt: 24,
-      alignment: 'center',
-      printer: {
-        deviceName: 'iDPRT SP410BT',
-        platform: 'win32',
-        identityFingerprint: 'model:driver:port',
-        manualSp410Confirmed: false,
-        usbConfirmed: true,
+      schemaVersion: 2,
+      activeProfile: '4x6',
+      profiles: {
+        '4x6': {
+          orientation: 'portrait',
+          fontFamily: 'Arial',
+          fontSizePt: 24,
+          alignment: 'center',
+          printer: {
+            deviceName: 'iDPRT SP410BT',
+            platform: 'win32',
+            identityFingerprint: 'model:driver:port',
+            manualProfileConfirmed: false,
+            usbConfirmed: true,
+          },
+        },
+        '2x1': {
+          orientation: 'landscape',
+          fontFamily: 'Arial',
+          fontSizePt: 12,
+          alignment: 'center',
+          printer: null,
+        },
       },
     };
-    expect(preferencesV1Schema.safeParse(valid).success).toBe(true);
+    expect(preferencesV2Schema.safeParse(valid).success).toBe(true);
   });
 });

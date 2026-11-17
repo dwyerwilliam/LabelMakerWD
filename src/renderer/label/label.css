@@ -35,8 +35,22 @@
 }
 
 .label-sheet-landscape {
+  width: 576px;
+  height: 384px;
+  position: relative;
+  background-color: #ffffff;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.label-sheet-landscape-physical {
   width: 384px;
   height: 576px;
+}
+
+.label-sheet-2x1 {
+  width: 216px;
+  height: 120px;
   position: relative;
   background-color: #ffffff;
   box-sizing: border-box;
@@ -71,6 +85,11 @@
 .label-safe-area-landscape {
   width: 552px;
   height: 360px;
+}
+
+.label-safe-area-2x1 {
+  width: 192px;
+  height: 96px;
 }
 
 /* Preview guide lines (only in editing/preview mode) */

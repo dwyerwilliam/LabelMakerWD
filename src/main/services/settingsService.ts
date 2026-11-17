@@ -1,15 +1,24 @@
 import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
-import type { PreferencesV1 } from '@shared/contracts';
-import { DEFAULT_PREFERENCES } from '@shared/defaults';
-import { preferencesV1Schema } from '@shared/schemas';
+import type { PreferencesUpdate, PreferencesV2 } from '@shared/contracts';
+import { createDefaultPreferences } from '@shared/defaults';
+import { legacyPreferencesV1Schema, preferencesV2Schema } from '@shared/schemas';
+
+function clonePreferences(preferences: PreferencesV2): PreferencesV2 {
+  return {
+    schemaVersion: 2,
+    activeProfile: preferences.activeProfile,
+    profiles: {
+      '4x6': { ...preferences.profiles['4x6'] },
+      '2x1': { ...preferences.profiles['2x1'] },
+    },
+  };
+}
 
 export class SettingsService {
   private filePath: string;
-  private currentPreferences: PreferencesV1 = DEFAULT_PREFERENCES;
-  private pendingTimer: NodeJS.Timeout | null = null;
-  private revision = 0;
+  private currentPreferences: PreferencesV2 = createDefaultPreferences();
   private writePromise: Promise<void> = Promise.resolve();
 
   constructor() {
@@ -17,28 +26,53 @@ export class SettingsService {
     this.load();
   }
 
-  getPreferences(): PreferencesV1 {
-    return { ...this.currentPreferences };
+  getPreferences(): PreferencesV2 {
+    return clonePreferences(this.currentPreferences);
   }
 
-  load(): PreferencesV1 {
+  load(): PreferencesV2 {
     try {
       if (!fs.existsSync(this.filePath)) {
-        this.currentPreferences = { ...DEFAULT_PREFERENCES };
-        return this.currentPreferences;
+        this.currentPreferences = createDefaultPreferences();
+        return this.getPreferences();
       }
 
       const raw = fs.readFileSync(this.filePath, 'utf-8');
-      const json = JSON.parse(raw);
-      const parsed = preferencesV1Schema.safeParse(json);
+      const json: unknown = JSON.parse(raw);
+      const parsedV2 = preferencesV2Schema.safeParse(json);
 
-      if (parsed.success) {
-        this.currentPreferences = parsed.data;
-      } else {
-        console.warn('Invalid settings schema, backing up corrupt file and loading defaults:', parsed.error);
-        this.backupCorrupt(raw);
-        this.currentPreferences = { ...DEFAULT_PREFERENCES };
+      if (parsedV2.success) {
+        this.currentPreferences = parsedV2.data;
+        return this.getPreferences();
       }
+
+      // Preserve the existing SP410 settings when upgrading from the original v1 shape.
+      const parsedV1 = legacyPreferencesV1Schema.safeParse(json);
+      if (parsedV1.success) {
+        const migrated = createDefaultPreferences();
+        migrated.profiles['4x6'] = {
+          orientation: parsedV1.data.orientation,
+          fontFamily: parsedV1.data.fontFamily,
+          fontSizePt: parsedV1.data.fontSizePt,
+          alignment: parsedV1.data.alignment,
+          printer: parsedV1.data.printer
+            ? {
+                deviceName: parsedV1.data.printer.deviceName,
+                platform: parsedV1.data.printer.platform,
+                identityFingerprint: parsedV1.data.printer.identityFingerprint,
+                manualProfileConfirmed: parsedV1.data.printer.manualSp410Confirmed,
+                usbConfirmed: parsedV1.data.printer.usbConfirmed,
+              }
+            : null,
+        };
+        this.currentPreferences = migrated;
+        console.info('Migrated Label Maker settings from schema v1 to v2.');
+        return this.getPreferences();
+      }
+
+      console.warn('Invalid settings schema, backing up corrupt file and loading defaults:', parsedV2.error);
+      this.backupCorrupt(raw);
+      this.currentPreferences = createDefaultPreferences();
     } catch (err) {
       console.error('Error reading settings file, restoring defaults:', err);
       try {
@@ -46,11 +80,13 @@ export class SettingsService {
           const raw = fs.readFileSync(this.filePath, 'utf-8');
           this.backupCorrupt(raw);
         }
-      } catch {}
-      this.currentPreferences = { ...DEFAULT_PREFERENCES };
+      } catch {
+        // Preserve the original load error; failure to create a backup is non-fatal.
+      }
+      this.currentPreferences = createDefaultPreferences();
     }
 
-    return this.currentPreferences;
+    return this.getPreferences();
   }
 
   private backupCorrupt(content: string): void {
@@ -62,41 +98,28 @@ export class SettingsService {
     }
   }
 
-  update(partial: Partial<PreferencesV1>): Promise<void> {
-    this.revision++;
+  update(partial: PreferencesUpdate): Promise<void> {
     this.currentPreferences = {
       ...this.currentPreferences,
       ...partial,
-      schemaVersion: 1,
+      schemaVersion: 2,
+      profiles: partial.profiles
+        ? {
+            '4x6': { ...this.currentPreferences.profiles['4x6'], ...partial.profiles['4x6'] },
+            '2x1': { ...this.currentPreferences.profiles['2x1'], ...partial.profiles['2x1'] },
+          }
+        : this.currentPreferences.profiles,
     };
 
-    if (this.pendingTimer) {
-      clearTimeout(this.pendingTimer);
-    }
-
-    return new Promise((resolve, reject) => {
-      this.pendingTimer = setTimeout(async () => {
-        try {
-          await this.flush();
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
-      }, 250);
-    });
+    return this.flush();
   }
 
-  reset(): Promise<PreferencesV1> {
-    this.currentPreferences = { ...DEFAULT_PREFERENCES };
+  reset(): Promise<PreferencesV2> {
+    this.currentPreferences = createDefaultPreferences();
     return this.flush().then(() => this.getPreferences());
   }
 
   flush(): Promise<void> {
-    if (this.pendingTimer) {
-      clearTimeout(this.pendingTimer);
-      this.pendingTimer = null;
-    }
-
     this.writePromise = this.writePromise.then(async () => {
       const dir = path.dirname(this.filePath);
       if (!fs.existsSync(dir)) {

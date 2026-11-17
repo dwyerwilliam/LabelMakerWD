@@ -3,6 +3,7 @@ import { IPC_CHANNELS } from '@shared/channels';
 import { validateIpcSender } from './trustedSender';
 import {
   preferencesUpdateSchema,
+  printerProfileSchema,
   preparePrintPayloadSchema,
   confirmPrintPayloadSchema,
 } from '@shared/schemas';
@@ -34,13 +35,15 @@ export function registerIpcHandlers(
 
   // Printers
   ipcMain.handle(IPC_CHANNELS.PRINTERS_SCAN, async (event) => {
+    console.log('[IPC] printers:scan invoked');
     validateIpcSender(event);
     return printerService.scan();
   });
 
-  ipcMain.handle(IPC_CHANNELS.PRINTERS_SELECT, async (event, { deviceName, manualConfirm }) => {
+  ipcMain.handle(IPC_CHANNELS.PRINTERS_SELECT, async (event, { profile, deviceName, manualConfirm }) => {
     validateIpcSender(event);
-    return printerService.selectQueue(deviceName, manualConfirm);
+    const parsedProfile = printerProfileSchema.parse(profile);
+    return printerService.selectQueue(parsedProfile, deviceName, manualConfirm);
   });
 
   // Printing

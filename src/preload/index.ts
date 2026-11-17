@@ -2,7 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '@shared/channels';
 import type {
   NormalizedQueue,
-  PreferencesV1,
+  PreferencesUpdate,
+  PreferencesV2,
+  PrinterProfile,
   PrintPrepareResult,
   PrintSnapshot,
   PrintStatusResult,
@@ -11,13 +13,13 @@ import type { Result } from '@shared/errors';
 
 export interface ElectronAPI {
   preferences: {
-    get: () => Promise<PreferencesV1>;
-    update: (partial: Partial<PreferencesV1>) => Promise<void>;
-    reset: () => Promise<PreferencesV1>;
+    get: () => Promise<PreferencesV2>;
+    update: (partial: PreferencesUpdate) => Promise<void>;
+    reset: () => Promise<PreferencesV2>;
   };
   printers: {
     scan: () => Promise<NormalizedQueue[]>;
-    select: (deviceName: string, manualConfirm?: boolean) => Promise<NormalizedQueue | null>;
+    select: (profile: PrinterProfile, deviceName: string, manualConfirm?: boolean) => Promise<NormalizedQueue | null>;
   };
   print: {
     prepare: (snapshot: PrintSnapshot) => Promise<PrintPrepareResult>;
@@ -39,8 +41,8 @@ const api: ElectronAPI = {
   },
   printers: {
     scan: () => ipcRenderer.invoke(IPC_CHANNELS.PRINTERS_SCAN),
-    select: (deviceName, manualConfirm = false) =>
-      ipcRenderer.invoke(IPC_CHANNELS.PRINTERS_SELECT, { deviceName, manualConfirm }),
+    select: (profile, deviceName, manualConfirm = false) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PRINTERS_SELECT, { profile, deviceName, manualConfirm }),
   },
   print: {
     prepare: (snapshot) => ipcRenderer.invoke(IPC_CHANNELS.PRINT_PREPARE, { snapshot }),

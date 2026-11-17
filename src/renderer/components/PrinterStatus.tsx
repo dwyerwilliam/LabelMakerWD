@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLabelStore } from '../stores/labelStore';
 import { useDeviceStore } from '../stores/deviceStore';
 import { useUIStore } from '../stores/uiStore';
 
@@ -7,10 +8,13 @@ export interface PrinterStatusProps {
 }
 
 export const PrinterStatus: React.FC<PrinterStatusProps> = ({ onRescan }) => {
-  const { selectedQueue, isScanning, error } = useDeviceStore();
+  const activeProfile = useLabelStore((s) => s.activeProfile);
+  const { selectedQueues, isScanning, error } = useDeviceStore();
+  const selectedQueue = selectedQueues[activeProfile];
   const { openDialog, printStatusText } = useUIStore();
 
-  let statusText = 'Looking for SP410…';
+  const profileLabel = activeProfile === '4x6' ? 'SP410' : 'SP310';
+  let statusText = `Looking for ${profileLabel}…`;
   let badgeColor = 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300';
 
   if (isScanning) {
@@ -31,7 +35,7 @@ export const PrinterStatus: React.FC<PrinterStatusProps> = ({ onRescan }) => {
       badgeColor = 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300';
     }
   } else {
-    statusText = 'No SP410 selected';
+    statusText = `No ${profileLabel} selected`;
     badgeColor = 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300';
   }
 

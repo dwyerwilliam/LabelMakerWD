@@ -6,7 +6,9 @@ import type {
   PrintPrepareResult,
   PrintSnapshot,
   PrintStatusResult,
+  PrinterProfile,
 } from '@shared/contracts';
+import { SP310_OUTPUT_HEIGHT_IN, SP310_OUTPUT_WIDTH_IN } from '@shared/defaults';
 import { compareFingerprints } from '@renderer/label/layout';
 import { IPC_CHANNELS } from '@shared/channels';
 import { err, ok, type Result } from '@shared/errors';
@@ -55,9 +57,12 @@ export class PrintService {
       throw new Error('A print job is currently in progress. Please wait.');
     }
 
-    const selectedQueue = this.printerService.getSelectedQueue();
+    const selectedQueue = this.printerService.getSelectedQueue(snapshot.profile);
     if (!selectedQueue) {
-      throw new Error('No iDPRT SP410 printer queue is selected.');
+      throw new Error(`No printer queue is selected for the ${snapshot.profile} profile.`);
+    }
+    if (selectedQueue.profile !== snapshot.profile) {
+      throw new Error('The selected printer does not match the active label profile.');
     }
 
     if (!this.printWindow || this.printWindow.isDestroyed()) {
@@ -138,9 +143,12 @@ export class PrintService {
       return err('PRINT_PREPARATION_FAILED', 'Preparation token has expired.');
     }
 
-    const selectedQueue = this.printerService.getSelectedQueue();
+    const selectedQueue = this.printerService.getSelectedQueue(prep.snapshot.profile);
     if (!selectedQueue) {
       return err('PRINTER_NOT_FOUND', 'Selected printer is no longer available.');
+    }
+    if (selectedQueue.profile !== prep.snapshot.profile) {
+      return err('PRINTER_NOT_FOUND', 'Selected printer no longer matches this label profile.');
     }
 
     if (this.isSubmitting) {
@@ -150,11 +158,12 @@ export class PrintService {
     this.isSubmitting = true;
     this.notifyState(requestId, 'submitting', `Sending to ${selectedQueue.displayName}…`);
 
+    const pageSize = getPrintPageSize(prep.snapshot.profile);
     const printOptions: Electron.WebContentsPrintOptions = {
       silent: true,
       deviceName: selectedQueue.deviceName,
-      pageSize: { width: 101600, height: 152400 }, // 4 x 6 in micrometers
-      landscape: false, // Rotation is handled in CSS composition
+      pageSize,
+      landscape: false, // Profile mapping is handled in the frozen composition.
       margins: { marginType: 'none' },
       scaleFactor: 100,
       color: false,
@@ -198,4 +207,15 @@ export class PrintService {
       this.mainWindow.webContents.send(IPC_CHANNELS.PRINT_STATE_EVENT, status);
     }
   }
+}
+
+function getPrintPageSize(profile: PrinterProfile): { width: number; height: number } {
+  if (profile === '2x1') {
+    return {
+      width: Math.round(SP310_OUTPUT_WIDTH_IN * 25400),
+      height: Math.round(SP310_OUTPUT_HEIGHT_IN * 25400),
+    };
+  }
+
+  return { width: 101600, height: 152400 };
 }
