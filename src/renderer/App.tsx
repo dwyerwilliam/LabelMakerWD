@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Toolbar } from './components/Toolbar';
 import { LabelEditor } from './components/LabelEditor';
 import { PrinterStatus } from './components/PrinterStatus';
@@ -9,6 +9,7 @@ import { useDeviceStore } from './stores/deviceStore';
 import { usePreferencesStore } from './stores/preferencesStore';
 import { useUIStore } from './stores/uiStore';
 import type { PrintPrepareResult, PrintSnapshot } from '@shared/contracts';
+import { queueIdentityFingerprint } from '@shared/printerSelection';
 
 export const App: React.FC = () => {
   const { activeProfile, draft, layoutFingerprint, layoutFingerprintRevision, hydratePreferences } =
@@ -24,7 +25,16 @@ export const App: React.FC = () => {
   } = useUIStore();
 
   const [pendingPrepareResult, setPendingPrepareResult] = useState<PrintPrepareResult | null>(null);
-  const pendingCloseResolve = useRef<((value: boolean) => void) | null>(null);
+
+  // Main asks before closing a window that still holds label text, so it only
+  // needs to know whether there is any (the text itself stays in the renderer).
+  const labelHasText = draft.text.trim().length > 0;
+  useEffect(() => {
+    if (!window.api) return;
+    void window.api.app.setLabelHasText(labelHasText).catch((err: unknown) => {
+      console.warn('Could not report label state to main:', err);
+    });
+  }, [labelHasText]);
 
   // Scan printers
   const handleScanPrinters = useCallback(async () => {
@@ -212,7 +222,7 @@ export const App: React.FC = () => {
                   printer: {
                     deviceName: selected.deviceName,
                     platform: navigator.platform.toUpperCase().includes('MAC') ? 'darwin' : 'win32',
-                    identityFingerprint: `${selected.model}:${selected.driver}:${selected.port}`,
+                    identityFingerprint: queueIdentityFingerprint(selected),
                     manualProfileConfirmed: manualConfirm,
                     usbConfirmed: selected.transport === 'usb' || manualConfirm,
                   },
@@ -244,24 +254,6 @@ export const App: React.FC = () => {
         cancelLabel="Cancel"
         onConfirm={handleConfirmClipped}
         onCancel={handleCancelPrepare}
-      />
-
-      {/* Discard Label and Close Dialog */}
-      <ConfirmDialog
-        isOpen={activeDialog === 'confirm-close'}
-        title="Discard Label and Close?"
-        message="You have unsaved text on your label. Label Maker does not save label contents between launches. Are you sure you want to discard your label and close?"
-        confirmLabel="Discard and Close"
-        cancelLabel="Keep Editing"
-        isDestructive={true}
-        onConfirm={() => {
-          closeDialog();
-          pendingCloseResolve.current?.(true);
-        }}
-        onCancel={() => {
-          closeDialog();
-          pendingCloseResolve.current?.(false);
-        }}
       />
 
       {/* Restore Defaults Dialog */}

@@ -2,6 +2,7 @@ import React from 'react';
 import { useLabelStore } from '../stores/labelStore';
 import { useDeviceStore } from '../stores/deviceStore';
 import { useUIStore } from '../stores/uiStore';
+import { usePreferencesStore } from '../stores/preferencesStore';
 
 export interface PrinterStatusProps {
   onRescan: () => void;
@@ -12,6 +13,9 @@ export const PrinterStatus: React.FC<PrinterStatusProps> = ({ onRescan }) => {
   const { selectedQueues, isScanning, error } = useDeviceStore();
   const selectedQueue = selectedQueues[activeProfile];
   const { openDialog, printStatusText } = useUIStore();
+  const saveStatus = usePreferencesStore((s) => s.saveStatus);
+  const saveError = usePreferencesStore((s) => s.errorMessage);
+  const retrySave = usePreferencesStore((s) => s.retrySave);
 
   const profileLabel = activeProfile === '4x6' ? 'SP410' : 'SP310';
   let statusText = `Looking for ${profileLabel}…`;
@@ -54,6 +58,15 @@ export const PrinterStatus: React.FC<PrinterStatusProps> = ({ onRescan }) => {
         {printStatusText && (
           <span className="ml-3 font-semibold text-blue-600 dark:text-blue-400">
             {printStatusText}
+          </span>
+        )}
+
+        {saveStatus === 'error' && (
+          <span role="alert" className="ml-3 flex items-center gap-2 font-medium text-red-600 dark:text-red-400">
+            {saveError ?? "Changes apply now but couldn't be saved."}
+            <button type="button" onClick={retrySave} className="underline hover:no-underline">
+              Retry
+            </button>
           </span>
         )}
       </div>

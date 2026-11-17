@@ -17,5 +17,5 @@ export const IPC_CHANNELS = {
   PRINT_WINDOW_READY: 'print-window:ready',
   PRINT_WINDOW_SUBMIT: 'print-window:submit',
 
-  APP_REQUEST_CLOSE: 'app:request-close',
+  APP_SET_LABEL_HAS_TEXT: 'app:set-label-has-text',
 } as const;

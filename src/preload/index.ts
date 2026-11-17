@@ -29,7 +29,8 @@ export interface ElectronAPI {
     onStateEvent: (callback: (state: { requestId: string; state: string; detail?: string }) => void) => () => void;
   };
   app: {
-    requestClose: () => Promise<boolean>;
+    /** Tells main whether the label has text, so closing the window can ask first. */
+    setLabelHasText: (hasText: boolean) => Promise<void>;
   };
 }
 
@@ -60,7 +61,7 @@ const api: ElectronAPI = {
     },
   },
   app: {
-    requestClose: () => ipcRenderer.invoke(IPC_CHANNELS.APP_REQUEST_CLOSE),
+    setLabelHasText: (hasText) => ipcRenderer.invoke(IPC_CHANNELS.APP_SET_LABEL_HAS_TEXT, hasText),
   },
 };
 

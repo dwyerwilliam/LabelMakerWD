@@ -1,22 +1,9 @@
 import { create } from 'zustand';
 import type { NormalizedQueue, PreferencesV2, PrinterProfile } from '@shared/contracts';
+import { selectQueueForProfile } from '@shared/printerSelection';
 
 type SelectedQueues = Record<PrinterProfile, NormalizedQueue | null>;
 
-function selectForProfile(
-  queues: NormalizedQueue[],
-  profile: PrinterProfile,
-  preferences?: PreferencesV2
-): NormalizedQueue | null {
-  const saved = preferences?.profiles[profile].printer;
-  if (saved) {
-    const matching = queues.find((queue) => queue.deviceName === saved.deviceName);
-    if (matching && (matching.profile === profile || (matching.profile === null && saved.manualProfileConfirmed))) {
-      return matching.profile === profile ? matching : { ...matching, profile, requiresManualConfirmation: false };
-    }
-  }
-  return queues.find((queue) => queue.profile === profile && !queue.requiresManualConfirmation) || null;
-}
 
 export interface DeviceState {
   isScanning: boolean;
@@ -41,8 +28,8 @@ export const useDeviceStore = create<DeviceState>((set) => ({
   setQueues: (queues, preferences) => set({
     queues,
     selectedQueues: {
-      '4x6': selectForProfile(queues, '4x6', preferences),
-      '2x1': selectForProfile(queues, '2x1', preferences),
+      '4x6': selectQueueForProfile(queues, '4x6', preferences?.profiles['4x6'].printer ?? null),
+      '2x1': selectQueueForProfile(queues, '2x1', preferences?.profiles['2x1'].printer ?? null),
     },
   }),
 

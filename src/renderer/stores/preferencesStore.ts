@@ -18,6 +18,8 @@ export interface PreferencesState {
   hydrate: (prefs: PreferencesV2) => void;
   update: (partial: PreferencesUpdate) => void;
   updateProfile: (profile: PrinterProfile, partial: Partial<ProfilePreferences>) => void;
+  /** Re-sends the current preferences after a failed save. */
+  retrySave: () => void;
   reset: (prefs?: PreferencesV2) => void;
   setSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error', error?: string | null) => void;
 }
@@ -28,7 +30,10 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => {
     set({ saveStatus: 'saving', errorMessage: null });
     void window.api.preferences.update(updatePayload(preferences)).then(
       () => set({ saveStatus: 'saved', errorMessage: null }),
-      (error: unknown) => set({ saveStatus: 'error', errorMessage: error instanceof Error ? error.message : 'Changes could not be saved.' })
+      (error: unknown) => {
+        console.warn('Saving preferences failed:', error);
+        set({ saveStatus: 'error', errorMessage: "Changes apply now but couldn't be saved." });
+      }
     );
   };
 
@@ -64,6 +69,8 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => {
       set({ preferences: next });
       persist(next);
     },
+
+    retrySave: () => persist(get().preferences),
 
     reset: (prefs = createDefaultPreferences()) => set({ preferences: prefs, saveStatus: 'saved', errorMessage: null }),
 

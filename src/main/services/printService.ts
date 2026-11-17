@@ -39,6 +39,11 @@ export class PrintService {
     this.printerService = printerService;
   }
 
+  /** True while a job is being handed to the OS spooler. */
+  isBusy(): boolean {
+    return this.isSubmitting;
+  }
+
   setWindows(mainWin: BrowserWindow, printWin: BrowserWindow): void {
     this.mainWindow = mainWin;
     this.printWindow = printWin;

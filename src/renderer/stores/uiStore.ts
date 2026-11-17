@@ -5,7 +5,6 @@ export type DialogType =
   | 'settings'
   | 'confirm-clip'
   | 'confirm-offline'
-  | 'confirm-close'
   | 'confirm-reset';
 
 export interface UIState {

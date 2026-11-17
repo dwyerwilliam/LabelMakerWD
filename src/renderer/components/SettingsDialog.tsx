@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { NormalizedQueue, PrinterProfile } from '@shared/contracts';
+import { isUnsupportedTransport } from '@shared/printerSelection';
 import { useDeviceStore } from '../stores/deviceStore';
 import { useUIStore } from '../stores/uiStore';
 import { enumerateSystemFonts } from '../fonts/fontCatalog';
@@ -19,6 +20,12 @@ const PROFILE_INFO: Record<PrinterProfile, { label: string; model: string; stock
   '2x1': { label: '2 × 1', model: 'SP310', stock: 'DYMO 30334 · 2¼ × 1¼ inch stock' },
 };
 
+/** Electron wraps main-process errors as "Error invoking remote method '...': Error: <message>". */
+function describeError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '') || 'Could not select this printer.';
+}
+
 export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   onRefreshPrinters,
   onRestoreDefaults,
@@ -31,20 +38,48 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   const [usbConfirmed, setUsbConfirmed] = useState(false);
   const [stockConfirmed, setStockConfirmed] = useState(false);
   const [refreshFontsSuccess, setRefreshFontsSuccess] = useState(false);
+  // A correctly named queue whose connection type could not be read: the user
+  // must confirm it is USB before it can be used.
+  const [usbPrompt, setUsbPrompt] = useState<{ profile: PrinterProfile; deviceName: string } | null>(null);
+  const [usbPromptConfirmed, setUsbPromptConfirmed] = useState(false);
+  const [selectError, setSelectError] = useState<{ profile: PrinterProfile; message: string } | null>(null);
 
   if (activeDialog !== 'settings') return null;
 
   const handleSelectEligible = async (profile: PrinterProfile, queue: NormalizedQueue) => {
-    await onSelectPrinter(profile, queue.deviceName, false);
+    setSelectError(null);
+    try {
+      await onSelectPrinter(profile, queue.deviceName, false);
+    } catch (error) {
+      setSelectError({ profile, message: describeError(error) });
+    }
+  };
+
+  const handleConfirmUsb = async () => {
+    if (!usbPrompt || !usbPromptConfirmed) return;
+    const { profile, deviceName } = usbPrompt;
+    setSelectError(null);
+    try {
+      await onSelectPrinter(profile, deviceName, true);
+      setUsbPrompt(null);
+      setUsbPromptConfirmed(false);
+    } catch (error) {
+      setSelectError({ profile, message: describeError(error) });
+    }
   };
 
   const handleConfirmRenamed = async () => {
     if (!renamedProfile || !selectedRenamedQueue || !usbConfirmed || !stockConfirmed) return;
-    await onSelectPrinter(renamedProfile, selectedRenamedQueue, true);
-    setRenamedProfile(null);
-    setSelectedRenamedQueue('');
-    setUsbConfirmed(false);
-    setStockConfirmed(false);
+    setSelectError(null);
+    try {
+      await onSelectPrinter(renamedProfile, selectedRenamedQueue, true);
+      setRenamedProfile(null);
+      setSelectedRenamedQueue('');
+      setUsbConfirmed(false);
+      setStockConfirmed(false);
+    } catch (error) {
+      setSelectError({ profile: renamedProfile, message: describeError(error) });
+    }
   };
 
   const handleRefreshFonts = async () => {
@@ -53,7 +88,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     setTimeout(() => setRefreshFontsSuccess(false), 2500);
   };
 
-  const unassignedQueues = queues.filter((queue) => queue.profile === null);
+  const unassignedQueues = queues.filter((queue) => queue.profile === null && !isUnsupportedTransport(queue.transport));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -93,21 +128,52 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <div className="mt-3 space-y-2">
                       {eligibleQueues.map((queue) => {
                         const isSelected = selectedQueue?.deviceName === queue.deviceName;
+                        const unsupported = isUnsupportedTransport(queue.transport);
+                        const needsUsbConfirm = queue.requiresManualConfirmation && !isSelected && !unsupported;
                         return (
                           <button
                             key={queue.deviceName}
                             type="button"
-                            onClick={() => void handleSelectEligible(profile, queue)}
-                            className={`flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors ${isSelected ? 'border-blue-500 bg-blue-50/50 dark:border-blue-500 dark:bg-blue-900/20' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'}`}
+                            disabled={unsupported}
+                            onClick={() => {
+                              setSelectError(null);
+                              if (needsUsbConfirm) {
+                                setUsbPrompt({ profile, deviceName: queue.deviceName });
+                                setUsbPromptConfirmed(false);
+                                return;
+                              }
+                              void handleSelectEligible(profile, queue);
+                            }}
+                            className={`flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${isSelected ? 'border-blue-500 bg-blue-50/50 dark:border-blue-500 dark:bg-blue-900/20' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'}`}
                           >
                             <span>
                               <span className="block text-sm font-semibold text-slate-900 dark:text-white">{queue.displayName}</span>
                               <span className="mt-0.5 block text-xs text-slate-500">Port: {queue.port || 'Unknown'} | Driver: {queue.driver || 'Default'} | Status: {queue.status}</span>
+                              {unsupported && <span className="mt-0.5 block text-xs text-red-600 dark:text-red-400">Bluetooth and network queues are not supported.</span>}
+                              {needsUsbConfirm && <span className="mt-0.5 block text-xs text-amber-700 dark:text-amber-400">Connection type unknown. Select to confirm it is USB.</span>}
                             </span>
                             <input type="radio" aria-label={`Use ${queue.displayName} for ${info.label}`} checked={isSelected} readOnly className="h-4 w-4 text-blue-600" />
                           </button>
                         );
                       })}
+                      {usbPrompt?.profile === profile && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-3 dark:border-amber-800 dark:bg-amber-950/20">
+                          <p className="text-xs text-slate-700 dark:text-slate-300">
+                            Label Maker could not tell how this queue is connected. Labels are only sent to USB printers.
+                          </p>
+                          <label className="mt-2 flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+                            <input type="checkbox" checked={usbPromptConfirmed} onChange={(event) => setUsbPromptConfirmed(event.target.checked)} className="rounded" />
+                            This printer is connected via USB
+                          </label>
+                          <div className="mt-3 flex gap-2">
+                            <button type="button" disabled={!usbPromptConfirmed} onClick={() => void handleConfirmUsb()} className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">Use this queue</button>
+                            <button type="button" onClick={() => setUsbPrompt(null)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-700 dark:border-slate-600 dark:text-slate-300">Cancel</button>
+                          </div>
+                        </div>
+                      )}
+                      {selectError?.profile === profile && (
+                        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{selectError.message}</div>
+                      )}
                       {eligibleQueues.length === 0 && (
                         <div className="rounded-lg border border-dashed border-slate-300 p-3 text-center text-xs text-slate-500 dark:border-slate-700">No matching {info.model} printer detected.</div>
                       )}

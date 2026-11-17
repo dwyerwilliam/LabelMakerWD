@@ -8,6 +8,7 @@ dist/
 dist-electron/
 out/
 releases/
+native-bin/
 build/
 *.exe
 !native/windows/*.cpp

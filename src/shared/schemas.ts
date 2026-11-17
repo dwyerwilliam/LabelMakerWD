@@ -107,6 +107,8 @@ export const preparePrintPayloadSchema = z.object({
   snapshot: printSnapshotSchema,
 });
 
+export const labelHasTextSchema = z.boolean();
+
 export const confirmPrintPayloadSchema = z.object({
   token: z.string().min(1),
   requestId: z.string().uuid(),

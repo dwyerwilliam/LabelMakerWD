@@ -1,6 +1,7 @@
 import type { BrowserWindow } from 'electron';
 import type { NormalizedQueue, PrinterProfile, QueueStatus } from '@shared/contracts';
 import { PRINTER_PROFILES, SP310_OUTPUT_HEIGHT_IN, SP310_OUTPUT_WIDTH_IN } from '@shared/defaults';
+import { isUnsupportedTransport, queueIdentityFingerprint, selectQueueForProfile } from '@shared/printerSelection';
 import { identifyPrinterProfile, detectTransport } from '../platform/printerAdapter';
 import { enumerateWindowsPrinters, inspectWindowsPrinter } from '../platform/windowsAdapter';
 import { inspectMacosPrinter } from '../platform/macosAdapter';
@@ -220,21 +221,11 @@ export class PrinterService {
     const preferences = this.settingsService.getPreferences();
 
     for (const profile of PRINTER_PROFILES) {
-      const savedChoice = preferences.profiles[profile].printer;
-      const savedQueue = savedChoice
-        ? this.cachedQueues.find((queue) => queue.deviceName === savedChoice.deviceName)
-        : undefined;
-
-      if (savedQueue && (savedQueue.profile === profile || (savedQueue.profile === null && savedChoice?.manualProfileConfirmed))) {
-        this.selectedQueues[profile] = savedQueue.profile === profile
-          ? savedQueue
-          : { ...savedQueue, profile, requiresManualConfirmation: false };
-        continue;
-      }
-
-      this.selectedQueues[profile] = this.cachedQueues.find(
-        (queue) => queue.profile === profile && !queue.requiresManualConfirmation
-      ) || null;
+      this.selectedQueues[profile] = selectQueueForProfile(
+        this.cachedQueues,
+        profile,
+        preferences.profiles[profile].printer
+      );
     }
   }
 
@@ -242,14 +233,17 @@ export class PrinterService {
     const queue = this.cachedQueues.find((candidate) => candidate.deviceName === deviceName);
     if (!queue) return null;
 
-    if (queue.profile !== profile && !manualConfirm) {
-      throw new Error(`This printer is not identified as the selected ${profile} printer profile.`);
+    if (isUnsupportedTransport(queue.transport)) {
+      throw new Error('Bluetooth and network queues are not supported. Choose a USB queue.');
     }
-    if (queue.profile && queue.profile !== profile) {
+    if (queue.profile !== null && queue.profile !== profile) {
       throw new Error('This printer is already assigned to another label profile.');
     }
-    if (!manualConfirm && queue.requiresManualConfirmation) {
-      throw new Error('USB confirmation is required for this printer queue.');
+    if (queue.profile === null && !manualConfirm) {
+      throw new Error(`This printer is not identified as the selected ${profile} printer profile.`);
+    }
+    if (queue.requiresManualConfirmation && !manualConfirm) {
+      throw new Error('Confirm that this queue is connected via USB before using it.');
     }
 
     const selected = {
@@ -268,7 +262,7 @@ export class PrinterService {
           printer: {
             deviceName: selected.deviceName,
             platform: process.platform === 'darwin' ? 'darwin' : 'win32',
-            identityFingerprint: `${selected.model}:${selected.driver}:${selected.port}`,
+            identityFingerprint: queueIdentityFingerprint(selected),
             manualProfileConfirmed: manualConfirm,
             usbConfirmed: selected.transport === 'usb' || manualConfirm,
           },

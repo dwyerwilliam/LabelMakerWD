@@ -6,15 +6,18 @@ import {
   printerProfileSchema,
   preparePrintPayloadSchema,
   confirmPrintPayloadSchema,
+  labelHasTextSchema,
 } from '@shared/schemas';
 import type { SettingsService } from '../services/settingsService';
 import type { PrinterService } from '../services/printerService';
 import type { PrintService } from '../services/printService';
+import type { LifecycleService } from '../services/lifecycleService';
 
 export function registerIpcHandlers(
   settingsService: SettingsService,
   printerService: PrinterService,
-  printService: PrintService
+  printService: PrintService,
+  lifecycleService: LifecycleService
 ): void {
   // Preferences
   ipcMain.handle(IPC_CHANNELS.PREFERENCES_GET, (event) => {
@@ -75,9 +78,8 @@ export function registerIpcHandlers(
   });
 
   // App lifecycle
-  ipcMain.handle(IPC_CHANNELS.APP_REQUEST_CLOSE, async (event) => {
+  ipcMain.handle(IPC_CHANNELS.APP_SET_LABEL_HAS_TEXT, (event, hasText) => {
     validateIpcSender(event);
-    await settingsService.flush();
-    return true;
+    lifecycleService.setLabelHasText(labelHasTextSchema.parse(hasText));
   });
 }

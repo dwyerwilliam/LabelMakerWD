@@ -58,7 +58,7 @@ test.beforeEach(async ({ page }) => {
         onStateEvent: () => () => {},
       },
       app: {
-        requestClose: async () => true,
+        setLabelHasText: async () => {},
       },
     };
   });
@@ -88,13 +88,13 @@ test('toggling orientation switches layout between portrait and landscape', asyn
   const landscapeBtn = page.getByRole('button', { name: 'Landscape' });
   await landscapeBtn.click();
 
-  const landscapeSheet = page.locator('[data-orientation="landscape"]');
+  const landscapeSheet = page.locator('.preview-mode[data-orientation="landscape"]');
   await expect(landscapeSheet).toBeVisible();
 
   const portraitBtn = page.getByRole('button', { name: 'Portrait' });
   await portraitBtn.click();
 
-  const portraitSheet = page.locator('[data-orientation="portrait"]');
+  const portraitSheet = page.locator('.preview-mode[data-orientation="portrait"]');
   await expect(portraitSheet).toBeVisible();
 });
 
@@ -103,7 +103,7 @@ test('switching to the 2 x 1 profile shows fixed landscape geometry', async ({ p
 
   await expect(page.locator('text=Stock: DYMO 30334 · 2¼ × 1¼ in')).toBeVisible();
   await expect(page.getByText('Landscape', { exact: true })).toBeVisible();
-  await expect(page.locator('[data-profile="2x1"][data-orientation="landscape"]')).toBeVisible();
+  await expect(page.locator('.preview-mode[data-profile="2x1"][data-orientation="landscape"]')).toBeVisible();
   await expect(page.locator('text=No SP310 selected')).toBeVisible();
 });
 

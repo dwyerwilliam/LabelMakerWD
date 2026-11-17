@@ -21,8 +21,9 @@ export class SettingsService {
   private currentPreferences: PreferencesV2 = createDefaultPreferences();
   private writePromise: Promise<void> = Promise.resolve();
 
-  constructor() {
-    this.filePath = path.join(app.getPath('userData'), 'settings.json');
+  /** `filePath` is injectable for tests; the app always uses its per-user data directory. */
+  constructor(filePath: string = path.join(app.getPath('userData'), 'settings.json')) {
+    this.filePath = filePath;
     this.load();
   }
 
@@ -119,20 +120,32 @@ export class SettingsService {
     return this.flush().then(() => this.getPreferences());
   }
 
+  /**
+   * Writes the current preferences. Writes are serialized, and each one runs
+   * after the previous one settles *whether or not it succeeded*: a single
+   * failed write (locked file, full disk) must not wedge every later save.
+   * Each caller sees the result of its own write.
+   */
   flush(): Promise<void> {
-    this.writePromise = this.writePromise.then(async () => {
-      const dir = path.dirname(this.filePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
+    const write = this.writePromise.catch(() => undefined).then(() => this.writeToDisk());
+    this.writePromise = write;
+    return write;
+  }
 
-      const tempFile = path.join(dir, `settings.json.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`);
-      const payload = JSON.stringify(this.currentPreferences, null, 2);
+  private async writeToDisk(): Promise<void> {
+    const dir = path.dirname(this.filePath);
+    await fs.promises.mkdir(dir, { recursive: true });
 
+    const tempFile = path.join(dir, `settings.json.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`);
+    const payload = JSON.stringify(this.currentPreferences, null, 2);
+
+    try {
       await fs.promises.writeFile(tempFile, payload, 'utf-8');
       await fs.promises.rename(tempFile, this.filePath);
-    });
-
-    return this.writePromise;
+    } catch (error) {
+      // Keep the previous settings file and do not leave temp files behind.
+      await fs.promises.rm(tempFile, { force: true }).catch(() => undefined);
+      throw error;
+    }
   }
 }
