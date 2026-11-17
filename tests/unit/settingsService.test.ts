@@ -142,4 +142,68 @@ describe('SettingsService persistence', () => {
     expect(service.getPreferences().activeProfile).toBe('4x6');
     expect(fs.readdirSync(dir).some((name) => name.startsWith('settings.json.corrupt.'))).toBe(true);
   });
+  it('fills in default shipping-label settings for a file written before they existed', () => {
+    const { shippingLabel: _omit, ...older } = createDefaultPreferences();
+    older.profiles['4x6'].fontSizePt = 30;
+    fs.writeFileSync(file, JSON.stringify(older), 'utf-8');
+
+    const service = new SettingsService(file);
+    expect(service.getLoadProblem()).toBeNull();
+    expect(service.getPreferences().shippingLabel).toEqual(createDefaultPreferences().shippingLabel);
+    expect(service.getPreferences().profiles['4x6'].fontSizePt).toBe(30);
+  });
+
+  it('saves shipping-label settings and reads them back', async () => {
+    const service = new SettingsService(file);
+    const shippingLabel = {
+      mode4x6: 'image' as const,
+      darkness: 5 as const,
+      rememberedCrops: [
+        { pageWidthPt: 612, pageHeightPt: 792, rect: { x: 0.05, y: 0.04, width: 0.48, height: 0.57 }, rotation: 0 as const },
+      ],
+    };
+    await service.update({ shippingLabel });
+
+    expect(new SettingsService(file).getPreferences().shippingLabel).toEqual(shippingLabel);
+    // Other updates keep it.
+    await service.update({ activeProfile: '2x1' });
+    expect(new SettingsService(file).getPreferences().shippingLabel).toEqual(shippingLabel);
+  });
+
+  it('returns copies, so a caller cannot change the saved remembered crops', async () => {
+    const service = new SettingsService(file);
+    await service.update({
+      shippingLabel: {
+        mode4x6: 'text',
+        darkness: 3,
+        rememberedCrops: [{ pageWidthPt: 612, pageHeightPt: 792, rect: { x: 0, y: 0, width: 1, height: 1 }, rotation: 0 }],
+      },
+    });
+    const copy = service.getPreferences();
+    copy.shippingLabel.rememberedCrops[0].rect.width = 0.1;
+    copy.shippingLabel.rememberedCrops.push(copy.shippingLabel.rememberedCrops[0]);
+
+    expect(service.getPreferences().shippingLabel.rememberedCrops).toHaveLength(1);
+    expect(service.getPreferences().shippingLabel.rememberedCrops[0].rect.width).toBe(1);
+  });
+
+  it('resets invalid shipping-label settings and keeps everything else', () => {
+    const prefs = createDefaultPreferences() as unknown as Record<string, any>;
+    prefs.profiles['4x6'].fontFamily = 'Verdana';
+    prefs.shippingLabel = { mode4x6: 'image', darkness: 9, rememberedCrops: [] };
+    fs.writeFileSync(file, JSON.stringify(prefs), 'utf-8');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const service = new SettingsService(file);
+    expect(service.getLoadProblem()).toMatchObject({ kind: 'repaired', fields: ['shippingLabel'] });
+    expect(service.getPreferences().shippingLabel).toEqual(createDefaultPreferences().shippingLabel);
+    expect(service.getPreferences().profiles['4x6'].fontFamily).toBe('Verdana');
+  });
+
+  it('resets shipping-label settings with Restore defaults', async () => {
+    const service = new SettingsService(file);
+    await service.update({ shippingLabel: { mode4x6: 'image', darkness: 1, rememberedCrops: [] } });
+    const reset = await service.reset();
+    expect(reset.shippingLabel).toEqual(createDefaultPreferences().shippingLabel);
+  });
 });

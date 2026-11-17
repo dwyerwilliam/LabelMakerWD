@@ -215,6 +215,7 @@ export const App: React.FC = () => {
     const snapshot: PrintSnapshot = {
       requestId: crypto.randomUUID(),
       draftRevision: draft.revision,
+      contentKind: 'text',
       text: draft.text,
       profile: draft.profile,
       orientation: draft.orientation,

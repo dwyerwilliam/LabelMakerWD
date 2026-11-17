@@ -148,8 +148,10 @@ import type { LayoutFingerprint } from './contracts';
 export const SHIPPING_DPI = 203;
 export const SHIPPING_WIDTH_IN = 4;
 export const SHIPPING_HEIGHT_IN = 6;
-export const SHIPPING_WIDTH_PX = SHIPPING_WIDTH_IN * SHIPPING_DPI;   // 812
-export const SHIPPING_HEIGHT_PX = SHIPPING_HEIGHT_IN * SHIPPING_DPI; // 1218
+// Written as literals (not 4 * 203) so their types are the literal values the IPC schema
+// and ShippingImagePayload require. A unit test checks they equal inches × dpi.
+export const SHIPPING_WIDTH_PX = 812 as const;   // SHIPPING_WIDTH_IN × SHIPPING_DPI
+export const SHIPPING_HEIGHT_PX = 1218 as const; // SHIPPING_HEIGHT_IN × SHIPPING_DPI
 
 /** Largest file the user may open or paste. */
 export const MAX_SOURCE_FILE_BYTES = 25 * 1024 * 1024;

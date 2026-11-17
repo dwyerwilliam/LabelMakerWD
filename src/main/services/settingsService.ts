@@ -14,6 +14,10 @@ function clonePreferences(preferences: PreferencesV2): PreferencesV2 {
       '4x6': { ...preferences.profiles['4x6'] },
       '2x1': { ...preferences.profiles['2x1'] },
     },
+    shippingLabel: {
+      ...preferences.shippingLabel,
+      rememberedCrops: preferences.shippingLabel.rememberedCrops.map((c) => ({ ...c, rect: { ...c.rect } })),
+    },
   };
 }
 
@@ -57,7 +61,11 @@ export class SettingsService {
       const parsedV2 = preferencesV2Schema.safeParse(json);
 
       if (parsedV2.success) {
-        this.currentPreferences = parsedV2.data;
+        // Files written before shipping labels existed have no shippingLabel key.
+        this.currentPreferences = {
+          ...parsedV2.data,
+          shippingLabel: parsedV2.data.shippingLabel ?? createDefaultPreferences().shippingLabel,
+        };
         return this.getPreferences();
       }
 
@@ -134,6 +142,7 @@ export class SettingsService {
       ...this.currentPreferences,
       ...partial,
       schemaVersion: 2,
+      shippingLabel: partial.shippingLabel ?? this.currentPreferences.shippingLabel,
       profiles: partial.profiles
         ? {
             '4x6': { ...this.currentPreferences.profiles['4x6'], ...partial.profiles['4x6'] },

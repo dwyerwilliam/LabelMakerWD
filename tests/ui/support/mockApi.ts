@@ -15,6 +15,12 @@ export interface MockOptions {
   savedFont?: string;
   /** Font families the fake system reports as installed. Omit to leave `queryLocalFonts` undefined (the app then checks common fonts itself). */
   installedFonts?: string[];
+  /** Saved shipping-label preferences (default: Text mode, darkness 3, no remembered crops). */
+  shippingLabel?: {
+    mode4x6: 'text' | 'image';
+    darkness: 1 | 2 | 3 | 4 | 5;
+    rememberedCrops: Array<{ pageWidthPt: number; pageHeightPt: number; rect: { x: number; y: number; width: number; height: number }; rotation: 0 | 90 | 180 | 270 }>;
+  };
 }
 
 /**
@@ -36,7 +42,12 @@ export async function installMockApi(page: Page, options: MockOptions = {}): Pro
       },
       '2x1': { orientation: 'landscape', fontFamily: 'Arial', fontSizePt: 12, alignment: 'center', printer: null },
     };
-    const preferences = { schemaVersion: 2, activeProfile: '4x6', profiles };
+    const preferences = {
+      schemaVersion: 2,
+      activeProfile: '4x6',
+      profiles,
+      shippingLabel: opts.shippingLabel ?? { mode4x6: 'text', darkness: 3, rememberedCrops: [] },
+    };
 
     const makeQueue = (profile: '4x6' | '2x1', status: string) => {
       const name = profile === '4x6' ? 'iDPRT SP410BT' : 'iDPRT SP310';

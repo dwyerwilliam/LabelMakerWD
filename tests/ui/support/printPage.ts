@@ -14,6 +14,7 @@ export interface ReportedLayout {
 export interface TestJob {
   requestId: string;
   draftRevision: number;
+  contentKind: 'text' | 'image';
   text: string;
   profile: '4x6' | '2x1';
   orientation: 'portrait' | 'landscape';
@@ -36,6 +37,7 @@ export function makeJob(
   return {
     requestId: `00000000-0000-4000-8000-${String(jobNumber).padStart(12, '0')}`,
     draftRevision: jobNumber,
+    contentKind: 'text',
     text,
     profile,
     orientation,

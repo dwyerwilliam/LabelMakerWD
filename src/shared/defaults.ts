@@ -81,6 +81,11 @@ export function createDefaultPreferences(): PreferencesV2 {
         printer: null,
       },
     },
+    shippingLabel: {
+      mode4x6: 'text',
+      darkness: 3,
+      rememberedCrops: [],
+    },
   };
 }
 

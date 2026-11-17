@@ -12,6 +12,7 @@ function snapshotFor(overrides: Partial<PrintSnapshot> = {}): PrintSnapshot {
   return {
     requestId: randomUUID(),
     draftRevision: 1,
+    contentKind: 'text',
     text: 'Hello',
     profile: '4x6',
     orientation: 'portrait',
