@@ -1,7 +1,7 @@
 # Label Maker — issue log
 
 Working log of problems found in this repository, kept up to date while they are fixed.
-Started **2026-11-17 01:44 EST**. Fixes are committed on `build-v1`; see the run log for what was pushed.
+Started **2026-11-17 01:44 EST**. Fixes reach `main` (the default branch, renamed from `build-v1` on 2026-11-17) through pull requests; see the run log.
 
 **Severity:** P0 breaks printing, loses data or is a security hole · P1 wrong behavior against the
 specs in common use · P2 edge case or hardening · P3 hygiene or polish.
@@ -75,6 +75,7 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 | LM-062 | P2 | Accessibility | Text colours below the 4.5:1 contrast minimum in both themes; the font button turned unreadable under the mouse in the dark theme | Fixed |
 | LM-063 | P3 | Accessibility | Each printer choice in Settings was a button holding a radio button (two controls for one choice) | Fixed |
 | LM-064 | P3 | Repo | package.json had no author or license, and the packager warned about it on every build | Fixed |
+| LM-065 | P2 | CI | The first PR run failed on macOS: four UI tests pressed Ctrl+P, but the app listens for Cmd+P there | Fixed (macOS Electron tests not yet run) |
 
 ## Details
 
@@ -436,6 +437,13 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Fix:** `author` is `dwyerwilliam` (the name in LICENSE) and `license` is `MIT`.
 **Verified:** the packager no longer warns.
 
+### LM-065 · P2 · CI · Fixed (macOS Electron tests not yet run)
+**Where:** `tests/ui/fieldValidation.spec.ts`, `tests/ui/dialogs.spec.ts`.
+**Problem:** On macOS the print shortcut is Cmd+P (`App.tsx` checks `metaKey` there). Four tests pressed `Control+p`, so on the macOS runner `Ctrl+P prints when every field is valid` found no print and failed, and the `test:electron` step after it was skipped. Windows passed all steps on the same run. This is a test portability slip, not an app defect; the other three tests passed vacuously on macOS.
+**Fix:** The tests press `ControlOrMeta+p`.
+**Also:** the branch `build-v1` was renamed `main` on GitHub on the owner's request, so `ci.yml` no longer lists `build-v1`.
+**Limit:** the macOS `test:electron` step has not yet run on any macOS runner, so more failures may appear there.
+
 ## Run log
 
 - 2026-11-17 01:44 EST — file created from the first code review plus the zod upgrade work.
@@ -454,3 +462,4 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 - 2026-11-17 10:08 EST — LM-056 to LM-059: a layout-parity experiment (405 labels) found that the print window measured the wrong element after a landscape-first session (clipped-label question skipped) and sometimes measured before the new label was drawn. Fixed; the spec's preview/print mismatch check is back as a question to the user (LM-003 closed). New tests: layout parity, print document, resize and display scale, overflow indicator, real-Electron overflow report.
 - 2026-11-17 10:10 EST — LM-027 fixed (measurement capped at 6,000 characters; 36,000 characters 340 ms to 46 ms).
 - 2026-11-17 10:16 EST — LM-060 to LM-063 from keyboard and axe-core checks: Tab trap in the editor, no focus ring on Size/Copies, contrast failures in both themes (and an unreadable hovered font button in the dark theme), nested radio-in-button. Fixed with permanent tests.
+- 2026-11-17 11:17 EST — PR 10 merged. The default branch `build-v1` was renamed `main` on GitHub and locally. First PR run: Windows passed every step; macOS failed one UI test (LM-065), fixed here.

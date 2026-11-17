@@ -59,7 +59,7 @@ test('a confirmation dialog starts on Cancel, cancels with Escape, and ignores C
   await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
 
   // Printing again while the question is open does not prepare a second label behind it.
-  await page.keyboard.press('Control+p');
+  await page.keyboard.press('ControlOrMeta+p');
   expect((await mockCalls(page)).prepare).toBe(1);
 
   await page.keyboard.press('Escape');

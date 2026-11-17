@@ -4,7 +4,6 @@ on:
   pull_request:
   push:
     branches:
-      - build-v1
       - main
 
 permissions:
