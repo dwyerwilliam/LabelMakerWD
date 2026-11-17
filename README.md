@@ -14,6 +14,18 @@ This application has only been tested on Windows 11. It has not been tested on o
 
 The supported label profiles are 4 × 6 for the iDPRT SP410 and 2 × 1 for the iDPRT SP310 with DYMO 30334 stock (actual size 2.25 × 1.25 inches). Additional label sizes are not planned.
 
+## Screenshots
+
+The editor shown with example labels and simulated printer status:
+
+**4 × 6 landscape**
+
+![4 by 6 landscape label editor](docs/images/label-4x6.png)
+
+**2 × 1 landscape**
+
+![2 by 1 label editor](docs/images/label-2x1.png)
+
 ## Downloads
 
 - [Latest release](https://github.com/dwyerwilliam/LabelMakerWD/releases/latest)

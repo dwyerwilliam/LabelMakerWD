@@ -47,6 +47,8 @@ jobs:
       - run: npm run test:unit
       - run: npm run build:native
       - run: npm run build:app
+      - name: Check Electron startup
+        run: npm run test:electron
       - name: Package installer
         run: npx electron-builder --${{ matrix.target }} --${{ matrix.arch }} --publish never
         env:

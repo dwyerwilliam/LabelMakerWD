@@ -10,6 +10,31 @@ export function createMainWindow(): BrowserWindow {
   const iconPath = isDev
     ? path.join(__dirname, '../../public/labelmaker-icon.png')
     : path.join(__dirname, '../../dist/labelmaker-icon.png');
+  const splashPath = isDev
+    ? path.join(__dirname, '../../public/splash.html')
+    : path.join(__dirname, '../../dist/splash.html');
+
+  const splash = new BrowserWindow({
+    width: 460,
+    height: 220,
+    frame: false,
+    resizable: false,
+    show: false,
+    skipTaskbar: true,
+    backgroundColor: '#101b3c',
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+
+  const splashShown = new Promise<void>((resolve) => {
+    splash.once('ready-to-show', () => {
+      if (!splash.isDestroyed()) splash.show();
+      setTimeout(resolve, 500);
+    });
+    splash.webContents.once('did-fail-load', () => resolve());
+  });
+  void splash.loadFile(splashPath).catch((error) => {
+    console.warn('Could not load splash screen:', error);
+  });
 
   const win = new BrowserWindow({
     title: 'Label Maker',
@@ -18,6 +43,7 @@ export function createMainWindow(): BrowserWindow {
     height: 700,
     minWidth: 720,
     minHeight: 560,
+    show: false,
     backgroundColor: '#f8fafc',
     webPreferences: {
       preload: preloadPath,
@@ -26,6 +52,16 @@ export function createMainWindow(): BrowserWindow {
       sandbox: true,
       spellcheck: false,
     },
+  });
+
+  win.once('ready-to-show', () => {
+    void splashShown.then(() => {
+      if (!win.isDestroyed()) win.show();
+      if (!splash.isDestroyed()) splash.close();
+    });
+  });
+  win.once('closed', () => {
+    if (!splash.isDestroyed()) splash.close();
   });
 
   if (isDev) {
