@@ -72,7 +72,9 @@ export const ShippingLabelView: React.FC = () => {
                 width={widthPx}
                 height={heightPx}
                 className="block h-full w-full"
-                style={{ imageRendering: 'pixelated' }}
+                // The 812 × 1218 label is usually shown smaller than its dots. Smooth scaling keeps thin
+                // lines and small text visible; nearest-neighbour (pixelated) dropped them. Print is unaffected.
+                style={{ imageRendering: 'auto' }}
                 data-testid="shipping-preview"
               />
             </div>

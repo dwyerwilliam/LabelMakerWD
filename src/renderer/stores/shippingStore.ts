@@ -174,12 +174,18 @@ export async function suggestCropForPdf(
   options: { useRemembered: boolean; scanAhead: boolean }
 ): Promise<CropSuggestion> {
   if (options.useRemembered) {
-    const remembered = findRememberedCrop(await pdf.pageSizePt(pageIndex));
+    const size = await pdf.pageSizePt(pageIndex);
+    const remembered = findRememberedCrop(size);
     if (remembered) {
-      return {
-        choice: { pageIndex, crop: { ...remembered.rect }, rotation: remembered.rotation },
-        status: MESSAGES.remembered,
-      };
+      // The area is remembered; which way up is read from this PDF's text when it has any, so a
+      // remembered turn (possibly saved by an older version, or for another carrier) cannot flip it.
+      const crop = { ...remembered.rect };
+      const textUpright = await pdf.textUprightRotation(pageIndex, crop);
+      const rotation =
+        textUpright === null
+          ? remembered.rotation
+          : chooseRotation(crop.width * size.width, crop.height * size.height, textUpright);
+      return { choice: { pageIndex, crop, rotation }, status: MESSAGES.remembered };
     }
   }
 

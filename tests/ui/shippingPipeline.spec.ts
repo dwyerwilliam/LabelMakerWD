@@ -352,3 +352,17 @@ for (const [name, rotation] of [
     expect(px!.at).toEqual([0, 255, 255, 255]);
   });
 }
+
+test('a remembered crop keeps its area but takes its turn from the text (a stale saved 90° cannot flip an eBay label)', async ({ page }) => {
+  // What an older build saved after accepting an eBay label: the right area, the wrong turn.
+  await page.evaluate(() =>
+    (window as any).__ship.prefs.getState().updateShipping({
+      rememberedCrops: [{ pageWidthPt: 612, pageHeightPt: 792, rect: { x: 0.13, y: 0.04, width: 0.74, height: 0.39 }, rotation: 90 }],
+    })
+  );
+  await loadFixture(page, 'sideways-down-letter.pdf');
+  const s = await state(page);
+  expect(s.dialog!.status).toBe('Using the area you chose last time for this page size.');
+  expect(s.dialog!.initial.crop).toEqual({ x: 0.13, y: 0.04, width: 0.74, height: 0.39 });
+  expect(s.dialog!.initial.rotation).toBe(270);
+});
