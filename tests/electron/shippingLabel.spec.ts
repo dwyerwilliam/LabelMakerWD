@@ -1,4 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
+import path from 'path';
 import { launchApp, makeUserDataDir, removeUserDataDir } from './support/app';
 
 // These tests write to the real system clipboard. They save what was there first and put it
@@ -25,6 +26,19 @@ test.beforeEach(async () => {
   });
 });
 
+/**
+ * Closes the app, answering "Discard label and close" if it asks: with a shipping label loaded
+ * it rightly asks first (the close guard), and an unanswered native dialog would hang the test.
+ */
+async function closeApp(): Promise<void> {
+  await app
+    .evaluate(({ dialog }) => {
+      (dialog as any).showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+    })
+    .catch(() => undefined);
+  await app.close().catch(() => undefined);
+}
+
 test.afterEach(async () => {
   await app
     .evaluate(async ({ clipboard }) => {
@@ -33,7 +47,7 @@ test.afterEach(async () => {
       else await clipboard.clear();
     })
     .catch(() => undefined);
-  await app.close().catch(() => undefined);
+  await closeApp();
   removeUserDataDir(userDataDir);
 });
 
@@ -204,4 +218,102 @@ test('the main process accepts a valid shipping-label job and refuses malformed 
   expect(await prepare(imageJob(small))).toContain('not a valid 4 × 6 label image');
   expect(await prepare(imageJob(png, { profile: '2x1', orientation: 'landscape' }))).toContain('4 × 6 profile only');
   expect(await prepare(imageJob(png, { text: 'Hello' }))).toContain('An image job has no text');
+});
+
+// The whole flow in the built app: real CSP, real app protocol, real pdf.js worker.
+test('a label PDF opens, is cropped and previewed in the built app without CSP errors', async () => {
+  const consoleLines: string[] = [];
+  window.on('console', (m) => consoleLines.push(m.text()));
+
+  await window.getByRole('button', { name: 'Shipping label' }).click();
+  await window.setInputFiles('[data-testid=shipping-file-input]', path.resolve('tests/fixtures/shipping/ebay-letter.pdf'));
+  await expect(window.getByRole('dialog', { name: 'Choose the label area' })).toBeVisible({ timeout: 15000 });
+  await expect(window.getByTestId('crop-thumbnail')).toBeVisible({ timeout: 15000 });
+  await window.getByRole('button', { name: 'Use this area' }).click();
+  await expect(window.getByTestId('shipping-preview')).toBeVisible({ timeout: 15000 });
+  await expect(window.getByTestId('shipping-caption')).toHaveText('From ebay-letter.pdf, page 1 · actual size');
+
+  expect(consoleLines.filter((line) => /Content Security Policy|Refused to/i.test(line))).toEqual([]);
+});
+
+test('the Paste button shows a snip from the real system clipboard', async () => {
+  const png = await window.evaluate(async () => {
+    const c = document.createElement('canvas');
+    c.width = 800;
+    c.height = 1200;
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, 800, 1200);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(60, 60, 680, 300);
+    const blob = await new Promise<Blob>((resolve) => c.toBlob((b) => resolve(b!), 'image/png'));
+    return [...new Uint8Array(await blob.arrayBuffer())];
+  });
+  await app.evaluate(async ({ clipboard, ClipboardItem }, bytes) => {
+    await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(bytes)], { type: 'image/png' }) })]);
+  }, png);
+
+  await window.getByRole('button', { name: 'Shipping label' }).click();
+  await window.getByTestId('shipping-dropzone').getByRole('button', { name: 'Paste' }).click();
+  await expect(window.getByTestId('shipping-preview')).toBeVisible({ timeout: 15000 });
+  await expect(window.getByTestId('shipping-caption')).toHaveText(/^From clipboard snip · about \d+ dpi$/);
+});
+
+// S19: label PDFs and images never reach the disk. After a full open → crop → preview →
+// print-window cycle, nothing in the app's data folder may hold a PDF, a PNG or the label image.
+test('S19: no label PDF or image is written to the app data folder', async () => {
+  await window.getByRole('button', { name: 'Shipping label' }).click();
+  await window.setInputFiles('[data-testid=shipping-file-input]', path.resolve('tests/fixtures/shipping/ebay-letter.pdf'));
+  await window.getByRole('button', { name: 'Use this area' }).click({ timeout: 15000 });
+  await expect(window.getByTestId('shipping-preview')).toBeVisible({ timeout: 15000 });
+
+  // Send the processed label through the print window too (prepare only; never confirmed).
+  const pngBase64 = await window.evaluate(async () => {
+    // The page may not fetch blob: URLs (CSP), so copy the preview's pixels through a canvas.
+    const img = document.querySelector<HTMLImageElement>('[data-testid="shipping-preview"]')!;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    c.getContext('2d')!.drawImage(img, 0, 0);
+    return c.toDataURL('image/png').split(',')[1];
+  });
+  await window.evaluate(async (png) => {
+    try {
+      const r = await globalThis.window.api.print.prepare({
+        requestId: '00000000-0000-4000-8000-00000000a019', draftRevision: 1, contentKind: 'image', text: '',
+        profile: '4x6', orientation: 'portrait', resolvedFontFamily: 'Arial', fontSizePt: 24, alignment: 'center', copies: 1,
+        expectedLayout: { logicalWidthPt: 288, logicalHeightPt: 432, lineRectsPt: [], lineTextOffsets: [], overflow: false },
+        image: { pngBase64: png, widthPx: 812, heightPx: 1218 },
+      } as never);
+      if (r.token) await globalThis.window.api.print.cancel(r.token);
+    } catch {
+      // No 4 × 6 printer on this machine: fine, the label still went through validation.
+    }
+  }, pngBase64);
+  await app.evaluate(async ({ session }) => {
+    await session.defaultSession.flushStorageData();
+  });
+
+  // Close first: some of Electron's own files are locked while it runs. (This test does not
+  // write the clipboard, so skipping the restore in afterEach loses nothing.)
+  await closeApp();
+
+  const fs = await import('fs');
+  const offenders: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else {
+        const content = fs.readFileSync(full);
+        const text = content.toString('latin1');
+        if (text.includes('%PDF-')) offenders.push(`${full}: PDF`);
+        if (content.includes(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) offenders.push(`${full}: PNG`);
+        if (text.includes(pngBase64.slice(100, 160))) offenders.push(`${full}: label image (base64)`);
+      }
+    }
+  };
+  walk(userDataDir);
+  expect(offenders).toEqual([]);
 });

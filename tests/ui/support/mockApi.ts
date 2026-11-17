@@ -92,13 +92,23 @@ export async function installMockApi(page: Page, options: MockOptions = {}): Pro
       lastSnapshot: null as null | Record<string, unknown>,
       /** PNG bytes the Paste button finds on the system clipboard (null: no image). */
       clipboardImage: null as null | Uint8Array,
+      /** Every preferences.update payload, in order. */
+      preferenceUpdates: [] as Array<Record<string, unknown>>,
+      /** The last value the app reported to setLabelHasText (the close guard). */
+      labelHasText: false,
       emit: (event: { requestId: string; state: string; detail?: string }) => listeners.forEach((l) => l(event)),
     };
 
     const w = window as unknown as Record<string, unknown>;
     w.__mock = mock;
     w.api = {
-      preferences: { get: async () => preferences, update: async () => {}, reset: async () => preferences },
+      preferences: {
+        get: async () => preferences,
+        update: async (partial: Record<string, unknown>) => {
+          mock.preferenceUpdates.push(JSON.parse(JSON.stringify(partial)));
+        },
+        reset: async () => preferences,
+      },
       printers: {
         scan: async () => {
           mock.calls.scan += 1;
@@ -146,7 +156,9 @@ export async function installMockApi(page: Page, options: MockOptions = {}): Pro
         },
       },
       app: {
-        setLabelHasText: async () => {},
+        setLabelHasText: async (hasText: boolean) => {
+          mock.labelHasText = hasText;
+        },
         getLaunchInfo: async () => ({ firstLaunch: opts.firstLaunch === true }),
       },
       clipboard: {
@@ -186,4 +198,14 @@ export async function configureMock(page: Page, fn: (mock: MockControls) => void
 /** The label snapshot the app last sent to be printed. */
 export async function lastSnapshot(page: Page): Promise<Record<string, unknown> | null> {
   return page.evaluate(() => (window as unknown as { __mock: { lastSnapshot: Record<string, unknown> | null } }).__mock.lastSnapshot);
+}
+
+/** Every preferences.update payload the app sent, in order. */
+export async function preferenceUpdates(page: Page): Promise<Array<Record<string, any>>> {
+  return page.evaluate(() => (window as unknown as { __mock: { preferenceUpdates: Array<Record<string, any>> } }).__mock.preferenceUpdates);
+}
+
+/** What the app last told main about whether closing would discard a label. */
+export async function labelHasText(page: Page): Promise<boolean> {
+  return page.evaluate(() => (window as unknown as { __mock: { labelHasText: boolean } }).__mock.labelHasText);
 }
