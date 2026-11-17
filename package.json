@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "description": "WYSIWYG thermal label editor and direct printer for iDPRT SP410 and SP310",
+  "author": "dwyerwilliam",
+  "license": "MIT",
   "main": "dist-electron/main/index.js",
   "engines": {
     "node": ">=24.0.0"

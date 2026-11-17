@@ -74,6 +74,7 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 | LM-061 | P2 | Accessibility | The Size and Copies fields showed no sign of keyboard focus | Fixed |
 | LM-062 | P2 | Accessibility | Text colours below the 4.5:1 contrast minimum in both themes; the font button turned unreadable under the mouse in the dark theme | Fixed |
 | LM-063 | P3 | Accessibility | Each printer choice in Settings was a button holding a radio button (two controls for one choice) | Fixed |
+| LM-064 | P3 | Repo | package.json had no author or license, and the packager warned about it on every build | Fixed |
 
 ## Details
 
@@ -428,6 +429,12 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Problem:** Each printer choice was a `<button>` with an `<input type="radio">` inside it: two tab stops and two announcements for one choice (axe: nested-interactive).
 **Fix:** Each row is one `role="radio"` button with `aria-checked`, inside a `role="radiogroup"` named "Printer for 4 × 6 labels" (or 2 × 1); the circle is drawn, not a control.
 **Verified:** the axe test above, and the existing printer-selection UI tests (updated to find the rows as radio buttons).
+
+### LM-064 · P3 · Repo · Fixed
+**Where:** `package.json`.
+**Problem:** electron-builder printed "author is missed in the package.json" on every build, and the installer metadata had no publisher name.
+**Fix:** `author` is `dwyerwilliam` (the name in LICENSE) and `license` is `MIT`.
+**Verified:** the packager no longer warns.
 
 ## Run log
 
