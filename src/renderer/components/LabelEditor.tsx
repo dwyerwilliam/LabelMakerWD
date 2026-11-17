@@ -178,11 +178,8 @@ export const LabelEditor: React.FC = () => {
       return;
     }
 
-    // Tab key: insert 4 spaces
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      document.execCommand('insertText', false, '    ');
-    }
+    // Tab and Shift+Tab are left alone so keyboard users can leave the editor (a label has no
+    // use for tab stops; typed or pasted tabs are turned into spaces).
   };
 
   const dims = getPageDimensions(draft.profile, draft.orientation);

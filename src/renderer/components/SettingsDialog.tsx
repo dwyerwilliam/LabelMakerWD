@@ -108,7 +108,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     >
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
           <h2 id={titleId} className="text-lg font-semibold text-slate-900 dark:text-white">Settings</h2>
-          <button type="button" onClick={closeDialog} aria-label="Close settings" className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">✕</button>
+          <button type="button" onClick={closeDialog} aria-label="Close settings" className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">✕</button>
         </div>
 
         <div className="flex-1 space-y-6 overflow-y-auto px-6 py-4">
@@ -116,7 +116,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Printer profiles</h3>
-                <p className="mt-1 text-xs text-slate-500">Choose a USB queue for each stock profile. The app never falls back to the OS default printer.</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose a USB queue for each stock profile. The app never falls back to the OS default printer.</p>
               </div>
               <button type="button" onClick={onRefreshPrinters} className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400">Scan Printers</button>
             </div>
@@ -134,7 +134,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <div className="flex items-center justify-between">
                       <div>
                         <h4 className="text-sm font-semibold text-slate-900 dark:text-white">{info.label} · iDPRT {info.model}</h4>
-                        <p className="mt-0.5 text-[11px] text-slate-500">{info.stock} · fixed USB profile</p>
+                        <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{info.stock} · fixed USB profile</p>
                       </div>
                       <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">{profile === '4x6' ? 'SP410 Match' : 'SP310 Match'}</span>
                     </div>
@@ -147,7 +147,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                       </div>
                     )}
 
-                    <div className="mt-3 space-y-2">
+                    <div role="radiogroup" aria-label={`Printer for ${info.label} labels`} className="mt-3 space-y-2">
                       {eligibleQueues.map((queue) => {
                         const isSelected = selectedQueue?.deviceName === queue.deviceName;
                         const unsupported = isUnsupportedTransport(queue.transport);
@@ -156,6 +156,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                           <button
                             key={queue.deviceName}
                             type="button"
+                            role="radio"
+                            aria-checked={isSelected}
                             disabled={unsupported}
                             onClick={() => {
                               setSelectError(null);
@@ -170,11 +172,17 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                           >
                             <span>
                               <span className="block text-sm font-semibold text-slate-900 dark:text-white">{queue.displayName}</span>
-                              <span className="mt-0.5 block text-xs text-slate-500">Port: {queue.port || 'Unknown'} | Driver: {queue.driver || 'Default'} | Status: {queue.status}</span>
+                              <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">Port: {queue.port || 'Unknown'} | Driver: {queue.driver || 'Default'} | Status: {queue.status}</span>
                               {unsupported && <span className="mt-0.5 block text-xs text-red-600 dark:text-red-400">Bluetooth and network queues are not supported.</span>}
                               {needsUsbConfirm && <span className="mt-0.5 block text-xs text-amber-700 dark:text-amber-400">Connection type unknown. Select to confirm it is USB.</span>}
                             </span>
-                            <input type="radio" aria-label={`Use ${queue.displayName} for ${info.label}`} checked={isSelected} readOnly className="h-4 w-4 text-blue-600" />
+                            {/* Drawn, not a second control: the whole row is the radio button. */}
+                            <span
+                              aria-hidden="true"
+                              className={`ml-3 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isSelected ? 'border-blue-600' : 'border-slate-400'}`}
+                            >
+                              {isSelected && <span className="h-2 w-2 rounded-full bg-blue-600" />}
+                            </span>
                           </button>
                         );
                       })}
@@ -197,7 +205,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{selectError.message}</div>
                       )}
                       {eligibleQueues.length === 0 && (
-                        <div className="rounded-lg border border-dashed border-slate-300 p-3 text-center text-xs text-slate-500 dark:border-slate-700">No matching {info.model} printer detected.</div>
+                        <div className="rounded-lg border border-dashed border-slate-300 p-3 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">No matching {info.model} printer detected.</div>
                       )}
                     </div>
 
@@ -229,7 +237,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
           <section className="border-t border-slate-200 pt-4 dark:border-slate-800">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">System Fonts</h3>
-            <p className="mt-1 text-xs text-slate-500">Label Maker enumerates local fonts installed on your computer.</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Label Maker enumerates local fonts installed on your computer.</p>
             <div className="mt-2 flex items-center gap-3">
               <button type="button" disabled={fontsRefreshing} onClick={() => void handleRefreshFonts()} className="rounded-sm border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">{fontsRefreshing ? 'Refreshing…' : 'Refresh Fonts'}</button>
               {fontsMessage && <span role="status" className="text-xs text-emerald-600 dark:text-emerald-400">{fontsMessage}</span>}
@@ -238,7 +246,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
           <section className="border-t border-slate-200 pt-4 dark:border-slate-800">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Restore Defaults</h3>
-            <p className="mt-1 text-xs text-slate-500">Reset both profiles, their formatting, and printer selections. Current label text is preserved.</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Reset both profiles, their formatting, and printer selections. Current label text is preserved.</p>
             <button type="button" onClick={onRestoreDefaults} className="mt-2 rounded-sm border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/20">Restore Factory Defaults…</button>
           </section>
         </div>

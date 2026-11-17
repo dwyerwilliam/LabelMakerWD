@@ -119,7 +119,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
                 onClick={() => handleProfileChange(profile)}
                 className={`rounded-sm px-2.5 py-1 text-xs font-semibold transition-colors ${
                   activeProfile === profile
-                    ? 'bg-white text-blue-600 shadow-xs dark:bg-slate-700 dark:text-blue-400'
+                    ? 'bg-white text-blue-600 shadow-xs dark:bg-slate-700 dark:text-blue-300'
                     : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
                 }`}
                 title={`${label} label profile for ${model}`}
@@ -131,7 +131,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
         </div>
 
         <div className="flex items-center gap-1.5 rounded-sm bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-          <span className="text-slate-400">Stock:</span> {isSmallProfile ? 'DYMO 30334 · 2¼ × 1¼ in' : '4 × 6 in'}
+          <span className="text-slate-600 dark:text-slate-400">Stock:</span> {isSmallProfile ? 'DYMO 30334 · 2¼ × 1¼ in' : '4 × 6 in'}
         </div>
 
         {/* Orientation Toggle */}
@@ -142,7 +142,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
             aria-pressed={draft.orientation === 'portrait'}
             className={`rounded-sm px-2.5 py-1 text-xs font-medium transition-colors ${
               draft.orientation === 'portrait'
-                ? 'bg-white text-blue-600 shadow-xs dark:bg-slate-700 dark:text-blue-400'
+                ? 'bg-white text-blue-600 shadow-xs dark:bg-slate-700 dark:text-blue-300'
                 : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
             }`}
             title="Portrait Layout (4 x 6)"
@@ -155,7 +155,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
             aria-pressed={draft.orientation === 'landscape'}
             className={`rounded-sm px-2.5 py-1 text-xs font-medium transition-colors ${
               draft.orientation === 'landscape'
-                ? 'bg-white text-blue-600 shadow-xs dark:bg-slate-700 dark:text-blue-400'
+                ? 'bg-white text-blue-600 shadow-xs dark:bg-slate-700 dark:text-blue-300'
                 : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
             }`}
             title="Landscape Layout (6 x 4)"
@@ -187,11 +187,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
             aria-label={`Font family: ${draft.preferredFontFamily}`}
             aria-haspopup="true"
             aria-expanded={fontPickerOpen}
-            className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 w-36"
+            className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 w-36"
             title="Select Font Family"
           >
             <span className="truncate">{draft.preferredFontFamily}</span>
-            <span className="text-[10px] text-slate-400">▼</span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400">▼</span>
           </button>
 
           {fontPickerOpen && (
@@ -221,7 +221,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
                   </button>
                 ))}
                 {filteredFonts.length === 0 && (
-                  <div className="p-2 text-center text-xs text-slate-400">No matching fonts</div>
+                  <div className="p-2 text-center text-xs text-slate-500 dark:text-slate-400">No matching fonts</div>
                 )}
               </div>
             </div>
@@ -230,10 +230,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
 
         {/* Font Size */}
         <div className="flex items-center gap-1">
-          <label htmlFor="fontSizeInput" className="text-xs text-slate-500">
+          <label htmlFor="fontSizeInput" className="text-xs text-slate-500 dark:text-slate-400">
             Size:
           </label>
-          <div className="flex items-center rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+          <div className="flex items-center rounded-md border border-slate-200 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/50 dark:border-slate-700 dark:bg-slate-800">
             <input
               id="fontSizeInput"
               type="text"
@@ -249,7 +249,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
               className={`w-12 px-1.5 py-1 text-center text-xs focus:outline-hidden dark:bg-transparent ${fontSizeResult.ok ? 'text-slate-800 dark:text-slate-200' : 'text-red-600 dark:text-red-400'}`}
               title="Font point size (6 - 288)"
             />
-            <span className="pr-1 text-[10px] text-slate-400">pt</span>
+            <span className="pr-1 text-[10px] text-slate-500 dark:text-slate-400">pt</span>
             <div className="flex flex-col border-l border-slate-200 dark:border-slate-700">
               <button
                 type="button"
@@ -295,7 +295,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
               aria-pressed={draft.alignment === align}
               className={`rounded-sm px-2 py-1 text-xs capitalize transition-colors ${
                 draft.alignment === align
-                  ? 'bg-white text-blue-600 shadow-xs dark:bg-slate-700 dark:text-blue-400'
+                  ? 'bg-white text-blue-600 shadow-xs dark:bg-slate-700 dark:text-blue-300'
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
               }`}
               title={`Align ${align}`}
@@ -307,10 +307,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
 
         {/* Copies */}
         <div className="flex items-center gap-1">
-          <label htmlFor="copiesInput" className="text-xs text-slate-500">
+          <label htmlFor="copiesInput" className="text-xs text-slate-500 dark:text-slate-400">
             Copies:
           </label>
-          <div className="flex items-center rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+          <div className="flex items-center rounded-md border border-slate-200 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/50 dark:border-slate-700 dark:bg-slate-800">
             <input
               id="copiesInput"
               type="text"

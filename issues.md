@@ -70,6 +70,10 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 | LM-057 | P2 | Print | The print window could measure before React had drawn the new label | Fixed (not reproduced in isolation) |
 | LM-058 | P2 | Print | A label that wraps differently on paper than in the preview printed without a word | Fixed |
 | LM-059 | P3 | Tests | Spec A09 (same wrapping at any window size and display scale) had no test | Fixed (no defect found) |
+| LM-060 | P2 | Accessibility | The Tab key was trapped in the label editor (it typed four spaces), so keyboard users could not leave it | Fixed |
+| LM-061 | P2 | Accessibility | The Size and Copies fields showed no sign of keyboard focus | Fixed |
+| LM-062 | P2 | Accessibility | Text colours below the 4.5:1 contrast minimum in both themes; the font button turned unreadable under the mouse in the dark theme | Fixed |
+| LM-063 | P3 | Accessibility | Each printer choice in Settings was a button holding a radio button (two controls for one choice) | Fixed |
 
 ## Details
 
@@ -400,6 +404,31 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Check:** Spec A09 asks for the same wrapping at different window sizes and display scales. The same multi-line text (with a blank line and a very long word) is measured at 800 × 600, 1100 × 760, 1600 × 900 and at 150 % and 200 % scale for each of 4 × 6 portrait, 4 × 6 landscape and 2 × 1: the line starts, the overflow answer and every line box agree within 0.05 pt in all 15 combinations.
 **Not covered:** the real hidden print window at a non-100 % Windows display scale; the Electron suite runs at the machine's own scale.
 
+### LM-060 · P2 · Accessibility · Fixed
+**Where:** `LabelEditor.tsx` `handleKeyDown`.
+**Problem:** Tab and Shift+Tab were intercepted to insert four spaces. A keyboard user who reached the label could never move on to the toolbar or the Print button (WCAG 2.1.2 No Keyboard Trap; spec A19). A label has no use for tab stops, and typed or pasted tabs are turned into spaces anyway.
+**Fix:** The key handling is removed; Tab and Shift+Tab move focus as usual.
+**Verified:** UI test (fails on the old code: focus stays in the editor and nothing else changes).
+**Note for the owner:** the Tab key no longer indents text in the label.
+
+### LM-061 · P2 · Accessibility · Fixed
+**Where:** `Toolbar.tsx` (Size and Copies fields).
+**Problem:** Both text fields hid the browser's focus outline and had no replacement, so there was no visible sign that they had keyboard focus (WCAG 2.4.7).
+**Fix:** The box around each field gets a blue border and ring while it has focus.
+**Verified:** a test tabs through every control of the main window in both themes and through the Settings dialog and requires a visible outline or ring on each; it fails on the old toolbar for exactly these two fields.
+
+### LM-062 · P2 · Accessibility · Fixed
+**Where:** `Toolbar.tsx`, `SettingsDialog.tsx`.
+**Problem:** axe-core reported colour-contrast failures of 2.4:1 to 3.9:1: the grey "Stock:" label and the "pt" unit in the light theme, the "Size:", "Copies:" and help texts in the dark theme, and the blue text of the selected tab and orientation button in the dark theme. Separately, hovering the font button in the dark theme turned it near-white while its text stayed light (1.2:1, unreadable).
+**Fix:** Darker greys in the light theme, lighter greys (`dark:text-slate-400`) in the dark theme, `blue-300` for the selected buttons in the dark theme, and a dark hover colour for the font button.
+**Verified:** axe-core (new dev dependency `@axe-core/playwright`) now runs on the main window, the 2 × 1 profile, the open font list, the Settings dialog and a confirmation dialog in both themes: 10 tests, no violations at WCAG 2.1 A and AA.
+
+### LM-063 · P3 · Accessibility · Fixed
+**Where:** `SettingsDialog.tsx`.
+**Problem:** Each printer choice was a `<button>` with an `<input type="radio">` inside it: two tab stops and two announcements for one choice (axe: nested-interactive).
+**Fix:** Each row is one `role="radio"` button with `aria-checked`, inside a `role="radiogroup"` named "Printer for 4 × 6 labels" (or 2 × 1); the circle is drawn, not a control.
+**Verified:** the axe test above, and the existing printer-selection UI tests (updated to find the rows as radio buttons).
+
 ## Run log
 
 - 2026-11-17 01:44 EST — file created from the first code review plus the zod upgrade work.
@@ -417,3 +446,4 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 - 2026-11-17 09:25 EST — LM-055: Vite 8, Tailwind 4 and Node 26/24 baseline done and verified (0 audit findings). Visual baseline compared before and after Tailwind 4.
 - 2026-11-17 10:08 EST — LM-056 to LM-059: a layout-parity experiment (405 labels) found that the print window measured the wrong element after a landscape-first session (clipped-label question skipped) and sometimes measured before the new label was drawn. Fixed; the spec's preview/print mismatch check is back as a question to the user (LM-003 closed). New tests: layout parity, print document, resize and display scale, overflow indicator, real-Electron overflow report.
 - 2026-11-17 10:10 EST — LM-027 fixed (measurement capped at 6,000 characters; 36,000 characters 340 ms to 46 ms).
+- 2026-11-17 10:16 EST — LM-060 to LM-063 from keyboard and axe-core checks: Tab trap in the editor, no focus ring on Size/Copies, contrast failures in both themes (and an unreadable hovered font button in the dark theme), nested radio-in-button. Fixed with permanent tests.

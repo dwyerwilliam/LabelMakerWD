@@ -64,7 +64,7 @@ test('a saved printer that is gone is kept and never replaced by another printer
   await page.getByTitle('Printer & App Settings').click();
   await expect(page.getByRole('status').filter({ hasText: 'Your saved printer "Old SP410" is not installed right now' })).toBeVisible();
 
-  await page.getByRole('button', { name: /iDPRT SP410BT Port: USB001/ }).click();
+  await page.getByRole('radio', { name: /iDPRT SP410BT Port: USB001/ }).click();
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByText('iDPRT SP410BT — Ready')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Print 4 × 6', exact: true })).toBeEnabled();

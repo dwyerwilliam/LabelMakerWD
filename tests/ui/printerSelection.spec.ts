@@ -87,7 +87,7 @@ test('a queue with an unreadable connection type needs a USB confirmation before
   await expect(page.getByRole('button', { name: 'Print 2 × 1', exact: true })).toBeDisabled();
 
   await page.getByTitle('Printer & App Settings').click();
-  await page.getByRole('button', { name: /iDPRT SP310 Port: COM5/ }).click();
+  await page.getByRole('radio', { name: /iDPRT SP310 Port: COM5/ }).click();
   await expect(page.getByText('Connection type unknown. Select to confirm it is USB.')).toBeVisible();
 
   // Selecting alone must not send anything to main.
@@ -111,7 +111,7 @@ test('a queue with an unreadable connection type needs a USB confirmation before
 test('network and Bluetooth queues are shown as unsupported and cannot be selected', async ({ page }) => {
   await page.getByTitle('Printer & App Settings').click();
 
-  const networkQueue = page.getByRole('button', { name: /SP410 Network Port: IP_/ });
+  const networkQueue = page.getByRole('radio', { name: /SP410 Network Port: IP_/ });
   await expect(networkQueue).toBeDisabled();
   await expect(page.getByText('Bluetooth and network queues are not supported.')).toBeVisible();
 });
@@ -122,7 +122,7 @@ test('a rejected selection shows the reason instead of failing silently', async 
   });
 
   await page.getByTitle('Printer & App Settings').click();
-  await page.getByRole('button', { name: /iDPRT SP410BT Port: USB001/ }).click();
+  await page.getByRole('radio', { name: /iDPRT SP410BT Port: USB001/ }).click();
 
   await expect(page.getByRole('alert')).toHaveText('This printer is already assigned to another label profile.');
 });
