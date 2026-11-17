@@ -2,6 +2,7 @@
 
 [![Build installers and release](https://github.com/dwyerwilliam/LabelMakerWD/actions/workflows/build-release.yml/badge.svg)](https://github.com/dwyerwilliam/LabelMakerWD/actions/workflows/build-release.yml)
 [![Latest release](https://img.shields.io/github/v/release/dwyerwilliam/LabelMakerWD?label=latest)](https://github.com/dwyerwilliam/LabelMakerWD/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 A single-window desktop application for editing and direct thermal printing of 4 × 6 labels to the **iDPRT SP410** family and fixed-landscape 2 × 1 labels to the **iDPRT SP310** using DYMO 30334 stock over USB.
 
@@ -66,3 +67,7 @@ npm run test:electron
 # Build installer for Windows
 npm run package:win
 ```
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
