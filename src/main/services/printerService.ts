@@ -13,6 +13,21 @@ const PROFILE_PAPER_DIMENSIONS: Record<PrinterProfile, { width: number; height: 
   '2x1': { width: SP310_OUTPUT_WIDTH_IN * 25.4, height: SP310_OUTPUT_HEIGHT_IN * 25.4 },
 };
 
+// Electron 36 removed `isDefault` and `status` from Electron.PrinterInfo (they were
+// dropped upstream in Chromium), so getPrintersAsync() no longer supplies them. Windows
+// queue discovery below still builds records that carry both, so this local shape keeps
+// them (plus the driver/port/model metadata) typed instead of reading them off PrinterInfo.
+interface PrinterRecord {
+  name: string;
+  displayName: string;
+  description: string;
+  isDefault?: boolean;
+  status?: number;
+  driverName?: string;
+  portName?: string;
+  model?: string;
+}
+
 interface InspectableCapabilities {
   status: QueueStatus;
   transport: NormalizedQueue['transport'];
@@ -55,26 +70,23 @@ export class PrinterService {
 
     try {
       console.log('[PrinterService] scan started');
-      let electronPrinters: Electron.PrinterInfo[] = [];
-      let printers: Electron.PrinterInfo[] = [];
+      let electronPrinters: PrinterRecord[] = [];
+      let printers: PrinterRecord[] = [];
 
       // On Windows, use the OS queue registry as the primary source. This
       // avoids blocking or failure in Electron's printer API from hiding
       // otherwise-installed USB queues.
       if (process.platform === 'win32') {
         const windowsPrinters = await enumerateWindowsPrinters();
-        printers = windowsPrinters.map((printer) => {
-          const result = {
-            name: printer.name,
-            displayName: printer.displayName,
-            description: printer.driverName,
-            status: 0,
-            isDefault: printer.isDefault,
-          } as Electron.PrinterInfo;
-          (result as any).driverName = printer.driverName;
-          (result as any).portName = printer.portName;
-          return result;
-        });
+        printers = windowsPrinters.map((printer): PrinterRecord => ({
+          name: printer.name,
+          displayName: printer.displayName,
+          description: printer.driverName,
+          status: 0,
+          isDefault: printer.isDefault,
+          driverName: printer.driverName,
+          portName: printer.portName,
+        }));
         console.log(`[PrinterService] Windows queue discovery returned ${printers.length} printer(s)`);
       }
 
@@ -92,9 +104,9 @@ export class PrinterService {
       const normalizedList: NormalizedQueue[] = [];
 
       for (const p of printers) {
-        const driverName = (p as any).driverName || p.description || '';
-        const portName = (p as any).portName || '';
-        const model = (p as any).model || '';
+        const driverName = p.driverName || p.description || '';
+        const portName = p.portName || '';
+        const model = p.model || '';
         const profile = identifyPrinterProfile(p.name, driverName, model);
         const detectedTransport = detectTransport(portName, p.name);
 
@@ -157,25 +169,25 @@ export class PrinterService {
     }
   }
 
-  private async mergeWindowsPrinterMetadata(printers: Electron.PrinterInfo[]): Promise<Electron.PrinterInfo[]> {
+  private async mergeWindowsPrinterMetadata(printers: PrinterRecord[]): Promise<PrinterRecord[]> {
     if (process.platform !== 'win32') return printers;
 
     const profilesFound = new Set(
       printers
         .map((printer) => identifyPrinterProfile(
         printer.name,
-        (printer as any).driverName || printer.description || '',
-        (printer as any).model || ''
+        printer.driverName || printer.description || '',
+        printer.model || ''
         ))
         .filter((profile): profile is PrinterProfile => profile !== null)
     );
     const hasIncompleteSupportedQueue = printers.some((printer) => {
       const profile = identifyPrinterProfile(
         printer.name,
-        (printer as any).driverName || printer.description || '',
-        (printer as any).model || ''
+        printer.driverName || printer.description || '',
+        printer.model || ''
       );
-      return profile !== null && !(String((printer as any).portName || '').trim());
+      return profile !== null && !(String(printer.portName || '').trim());
     });
     const hasBothProfiles = PRINTER_PROFILES.every((profile) => profilesFound.has(profile));
     if (hasBothProfiles && !hasIncompleteSupportedQueue) return printers;
@@ -183,7 +195,7 @@ export class PrinterService {
     const windowsPrinters = await enumerateWindowsPrinters();
     if (windowsPrinters.length === 0) return printers;
 
-    const merged = [...printers] as Electron.PrinterInfo[];
+    const merged: PrinterRecord[] = [...printers];
     for (const fallback of windowsPrinters) {
       const existingIndex = merged.findIndex((printer) =>
         printer.name.toLowerCase() === fallback.name.toLowerCase() ||
@@ -191,7 +203,7 @@ export class PrinterService {
       );
 
       if (existingIndex >= 0) {
-        const existing = merged[existingIndex] as any;
+        const existing = merged[existingIndex];
         merged[existingIndex] = {
           ...existing,
           displayName: existing.displayName || fallback.displayName,
@@ -199,7 +211,7 @@ export class PrinterService {
           driverName: existing.driverName || fallback.driverName,
           portName: existing.portName || fallback.portName,
           isDefault: existing.isDefault || fallback.isDefault,
-        } as Electron.PrinterInfo;
+        };
       } else {
         merged.push({
           name: fallback.name,
@@ -207,9 +219,9 @@ export class PrinterService {
           description: fallback.driverName,
           status: 0,
           isDefault: fallback.isDefault,
-        } as Electron.PrinterInfo);
-        (merged[merged.length - 1] as any).driverName = fallback.driverName;
-        (merged[merged.length - 1] as any).portName = fallback.portName;
+          driverName: fallback.driverName,
+          portName: fallback.portName,
+        });
       }
     }
 
