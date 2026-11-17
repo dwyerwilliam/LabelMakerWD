@@ -90,6 +90,8 @@ export async function installMockApi(page: Page, options: MockOptions = {}): Pro
       calls: { prepare: 0, confirm: 0, cancel: 0, scan: 0 },
       /** The snapshot the app last asked to print. */
       lastSnapshot: null as null | Record<string, unknown>,
+      /** PNG bytes the Paste button finds on the system clipboard (null: no image). */
+      clipboardImage: null as null | Uint8Array,
       emit: (event: { requestId: string; state: string; detail?: string }) => listeners.forEach((l) => l(event)),
     };
 
@@ -146,6 +148,9 @@ export async function installMockApi(page: Page, options: MockOptions = {}): Pro
       app: {
         setLabelHasText: async () => {},
         getLaunchInfo: async () => ({ firstLaunch: opts.firstLaunch === true }),
+      },
+      clipboard: {
+        readImage: async () => mock.clipboardImage,
       },
     };
   }, options);

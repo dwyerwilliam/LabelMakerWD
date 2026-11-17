@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { clipboard, ipcMain } from 'electron';
 import { IPC_CHANNELS } from '@shared/channels';
 import { isTrustedSender, validateIpcSender } from './trustedSender';
 import {
@@ -11,6 +11,7 @@ import {
   printWindowReadyPayloadSchema,
   labelHasTextSchema,
 } from '@shared/schemas';
+import { MAX_SOURCE_FILE_BYTES } from '@shared/shipping';
 import type { SettingsService } from '../services/settingsService';
 import type { PrinterService } from '../services/printerService';
 import type { PrintService } from '../services/printService';
@@ -96,6 +97,22 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.APP_GET_LAUNCH_INFO, (event) => {
     validateIpcSender(event);
     return { firstLaunch: settingsService.isFreshInstall(), settingsProblem: settingsService.getLoadProblem() };
+  });
+
+  // The Paste button: the image on the system clipboard as PNG bytes, or null.
+  // Never logged: a pasted shipping label holds names and addresses.
+  // Electron 45 clipboard API: items carry MIME types; images are offered as image/png.
+  ipcMain.handle(IPC_CHANNELS.CLIPBOARD_READ_IMAGE, async (event) => {
+    validateIpcSender(event);
+    const items = await clipboard.read();
+    for (const item of items) {
+      const type = item.types.includes('image/png') ? 'image/png' : item.types.find((t) => t.startsWith('image/'));
+      if (!type) continue;
+      const blob = await item.getType(type);
+      if (!(blob instanceof Blob) || blob.size === 0 || blob.size > MAX_SOURCE_FILE_BYTES) return null;
+      return new Uint8Array(await blob.arrayBuffer());
+    }
+    return null;
   });
 
   ipcMain.handle(IPC_CHANNELS.APP_SET_LABEL_HAS_TEXT, (event, hasText) => {

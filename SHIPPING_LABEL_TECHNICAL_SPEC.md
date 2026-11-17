@@ -734,13 +734,18 @@ The `paste` event covers Ctrl+V. The Paste button cannot use `navigator.clipboar
 2. `src/main/ipc/handlers.ts`:
 
    ```ts
-   ipcMain.handle(IPC_CHANNELS.CLIPBOARD_READ_IMAGE, (event) => {
+   // Electron 45 replaced clipboard.readImage() with an async, W3C-style API.
+   ipcMain.handle(IPC_CHANNELS.CLIPBOARD_READ_IMAGE, async (event) => {
      validateIpcSender(event);
-     const image = clipboard.readImage();
-     if (image.isEmpty()) return null;
-     const png = image.toPNG();
-     if (png.length > MAX_SOURCE_FILE_BYTES) return null;
-     return new Uint8Array(png);
+     const items = await clipboard.read();
+     for (const item of items) {
+       const type = item.types.includes('image/png') ? 'image/png' : item.types.find((t) => t.startsWith('image/'));
+       if (!type) continue;
+       const blob = await item.getType(type);
+       if (!(blob instanceof Blob) || blob.size === 0 || blob.size > MAX_SOURCE_FILE_BYTES) return null;
+       return new Uint8Array(await blob.arrayBuffer());
+     }
+     return null;
    });
    ```
 
@@ -1426,7 +1431,7 @@ Add an image job (extend `makeJob` in `tests/ui/support/printPage.ts` with an op
 Against the built app (real CSP, real protocol, real pdf.js worker):
 
 1. Collect console messages; load `ebay-letter.pdf` via the file input; the crop dialog opens. Accept; the preview appears. Assert **no** console message contains `Content Security Policy` or `Refused to`.
-2. Write a PNG to the system clipboard from the test (`electronApp.evaluate(({ clipboard, nativeImage }) => clipboard.writeImage(nativeImage.createFromBuffer(buf)))`); click **Paste**; the preview appears.
+2. Write a PNG to the system clipboard from the test (`app.evaluate(async ({ clipboard, ClipboardItem }, bytes) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(bytes)]) })]), png)`); click **Paste**; the preview appears. The bridge-level clipboard tests already exist in `tests/electron/shippingLabel.spec.ts` (Phase 3), including a Windows test that writes a bitmap the way Snipping Tool does. Each test saves and restores the user's clipboard; keep that pattern.
 3. With a fake or no printer, do not submit a real job. Only assert that `print:prepare` succeeds through the real main validation, if the existing Electron tests have a pattern for that; otherwise skip this step.
 
 Follow the existing setup in `tests/electron/support/app.ts`.
@@ -1464,6 +1469,7 @@ Each phase ends with the checks in rule 0.2 and a local commit (rule 0.3).
 | CSP additions beyond §13.1 (with reason) | None. Phase 0 (Nov 17, 2026): `ebay-letter`, `label-4x6`, `two-page`, and `encrypted` fixtures loaded in the built Electron app with zero console messages. |
 | WebAssembly (`'wasm-unsafe-eval'`) | Not added. The wasm path (JBIG2/JPX image decoders) is untested because no fixture contains such images. `public/pdfjs/wasm/` includes pdf.js's non-wasm JS fallbacks. If a real label PDF fails to render its barcode image, test that first. |
 | `standard_fonts` needed by any fixture or real label? | Fixtures embed Helvetica via pdf-lib, so they don't exercise it. The folder is copied and the URL is set anyway. |
+| Electron clipboard API | Electron 45 has no `clipboard.readImage()`. Use `await clipboard.read()` and `item.getType('image/png')`. A Windows bitmap (CF_DIB, what Win+Shift+S leaves) is offered as `image/png`: verified in Phase 3 with .NET `Clipboard.SetImage`. |
 | Rendering check | A 4 × 6 page at scale 203/72 renders to exactly 812 × 1218 px. |
 | UI tests on this machine | The installed `@playwright/test` wants browser build 1255, which isn't downloaded. Either run `npx playwright install chromium` or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to an installed Chrome. |
 | Physical test (S20): OS, driver, app version, result | _(owner)_ |

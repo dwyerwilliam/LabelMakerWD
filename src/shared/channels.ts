@@ -20,4 +20,6 @@ export const IPC_CHANNELS = {
 
   APP_SET_LABEL_HAS_TEXT: 'app:set-label-has-text',
   APP_GET_LAUNCH_INFO: 'app:get-launch-info',
+
+  CLIPBOARD_READ_IMAGE: 'clipboard:read-image',
 } as const;
