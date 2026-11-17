@@ -222,7 +222,8 @@ export function suggestCropForImage(source: Extract<LoadedSource, { kind: 'image
     choice: {
       pageIndex: 0,
       crop: pxRectToFrac(r, source.width, source.height),
-      // Snips keep the clockwise default until it is known how they are usually taken.
+      // Labels are snipped upright, so a snip is normally tall and is not turned. A wide snip is a
+      // landscape label with no readable text direction: turn it clockwise; Rotate corrects it.
       rotation: chooseRotation(r.width, r.height, null, 90),
     },
     status: null,
