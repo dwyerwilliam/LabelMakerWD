@@ -1,12 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { BrowserWindow } from 'electron';
 import type { PreferencesUpdate, PreferencesV2 } from '@shared/contracts';
 import { createDefaultPreferences } from '@shared/defaults';
 import { PrinterService } from '@main/services/printerService';
 import type { SettingsService } from '@main/services/settingsService';
 
-// Fake OS queues. Both the Windows (registry/PowerShell) and Electron/macOS
-// enumeration paths read from the same list so the test is platform-neutral.
+// Fake OS queues. The Windows (registry/PowerShell) and Electron/macOS enumeration
+// paths read from the same list, and every test runs once for each platform.
 const fake = vi.hoisted(() => {
   const state = { printers: [] as Array<{ name: string; driver: string; port: string }> };
   const transportOf = (port: string) =>
@@ -15,7 +15,10 @@ const fake = vi.hoisted(() => {
     const printer = state.printers.find((candidate) => candidate.name === name);
     return { status: 'ready', transport: transportOf(printer?.port ?? '') };
   };
-  return { state, inspect };
+  // What macOS CUPS reports as the device URI for a queue on that port.
+  const uriOf = (port: string) =>
+    /usb/i.test(port) ? 'usb://iDPRT/Printer' : /ip_/i.test(port) ? 'ipp://10.0.0.9/ipp/print' : /bth|bluetooth/i.test(port) ? 'bluetooth://00-11-22' : '';
+  return { state, inspect, uriOf };
 });
 
 vi.mock('@main/platform/windowsAdapter', () => ({
@@ -56,6 +59,7 @@ function makeWindow(): BrowserWindow {
           description: p.driver,
           status: 0,
           isDefault: false,
+          options: { 'device-uri': fake.uriOf(p.port) },
         })),
     },
   } as unknown as BrowserWindow;
@@ -69,8 +73,10 @@ async function newService() {
   return { service, ...harness };
 }
 
-describe('PrinterService queue selection', () => {
+describe.each(['win32', 'darwin'] as const)('PrinterService queue selection on %s', (platform) => {
+  const realPlatform = process.platform;
   beforeEach(() => {
+    Object.defineProperty(process, 'platform', { value: platform });
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     fake.state.printers = [
@@ -79,6 +85,10 @@ describe('PrinterService queue selection', () => {
       { name: 'Front Desk Labels', driver: 'Generic Thermal', port: 'USB003' }, // renamed
       { name: 'Office Network Printer', driver: 'Generic', port: 'IP_10.0.0.9' },
     ];
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: realPlatform });
   });
 
   it('auto-selects only the detected USB queue', async () => {

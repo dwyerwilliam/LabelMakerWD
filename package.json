@@ -16,6 +16,7 @@
     "test:ui": "playwright test --config=playwright.config.ts",
     "build:native": "node scripts/build-native.mjs",
     "build:app": "tsc --noEmit && vite build",
+    "pretest:electron": "node node_modules/electron/install.js",
     "test:electron": "playwright test --config=playwright.electron.config.ts",
     "package:win": "npm run build:native && npm run build:app && electron-builder --win --x64",
     "package:mac": "npm run build:native && npm run build:app && electron-builder --mac",
@@ -36,7 +37,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "electron": "^45.3.3",
-    "electron-builder": "^26.15.7",
+    "electron-builder": "^26.18.1",
     "eslint": "^10.15.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.14.0",
@@ -47,7 +48,15 @@
     "vite": "^6.1.0",
     "vite-plugin-electron": "^0.28.8",
     "vite-plugin-electron-renderer": "^0.14.6",
-    "vitest": "^3.0.5"
+    "vitest": "^5.1.0"
+  },
+  "overrides": {
+    "app-builder-lib": {
+      "minimatch": "^11.0.1"
+    },
+    "@electron/universal": {
+      "minimatch": "^11.0.1"
+    }
   },
   "build": {
     "appId": "com.labelmaker.app",

@@ -1,8 +1,7 @@
 # Label Maker — issue log
 
 Working log of problems found in this repository, kept up to date while they are fixed.
-Started **2026-11-17 01:44 EST**. Nothing here is committed or pushed; fixes stay in the
-working tree until they are reviewed.
+Started **2026-11-17 01:44 EST**. Fixes are committed on `build-v1`; see the run log for what was pushed.
 
 **Severity:** P0 breaks printing, loses data or is a security hole · P1 wrong behavior against the
 specs in common use · P2 edge case or hardening · P3 hygiene or polish.
@@ -29,13 +28,13 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 | LM-015 | P1 | CI | No CI on pull requests; UI tests, lint and a real packaged smoke test are missing | Fixed (CI untested until pushed) |
 | LM-016 | P3 | CI | No Dependabot for npm and pinned actions | Fixed |
 | LM-017 | P3 | Docs | README lacks setup, unsigned-build, testing and limitation notes | Fixed |
-| LM-018 | P3 | Repo | No .gitattributes, untracked worktrees/ (fixed); stale branches (open) | Partly fixed |
+| LM-018 | P3 | Repo | No .gitattributes, untracked worktrees/, stale branches | Fixed |
 | LM-019 | P2 | Tests | UI tests start a real Electron on the real settings folder; browser path not configurable | Fixed |
-| LM-020 | P2 | Printers | Effective media (SP310 default 76.2 × 127 mm) is never validated against the profile | Decision |
+| LM-020 | P2 | Printers | Effective media (SP310 default 76.2 × 127 mm) is never validated against the profile | Closed by decision (fixed stock per printer) |
 | LM-021 | P2 | Startup | A machine with only an SP310 still opens on 4 × 6 (A01) | Fixed |
 | LM-022 | P3 | Print | Preparation tokens and request statuses are never pruned | Fixed |
 | LM-023 | P2 | Print | `printer_unverified` confirmation reason was produced but never handled (removed) | Fixed |
-| LM-024 | P3 | Deps | `npm audit`: vitest/tinypool (critical) and electron-builder (moderate), both dev tooling | Decision |
+| LM-024 | P3 | Deps | `npm audit`: vitest/tinypool (critical) and electron-builder/minimatch (moderate), both dev tooling | Fixed |
 | LM-025 | P0 | Editor | A blank line shows once in the editor but prints twice (WYSIWYG break) | Fixed |
 | LM-026 | P2 | Security | Pasted HTML is parsed with innerHTML on the live document | Fixed |
 | LM-027 | P3 | Performance | Layout measurement reads every character, so a very large label makes each keystroke slow | Open |
@@ -64,6 +63,8 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 | LM-050 | P2 | Startup | The splash screen could stay on screen with no way to close it if the app page failed to load | Fixed |
 | LM-051 | P2 | Printers | Output of the native helpers and PowerShell was parsed untyped and trusted | Fixed |
 | LM-052 | P3 | Startup | A failure while starting up was swallowed: no window, no message | Fixed |
+| LM-053 | P1 | CI | The first CI run failed on Windows: two test workers raced to download the Electron binary | Fixed |
+| LM-054 | P2 | CI / Printers | The first CI run failed on macOS: the printer test fixture had no connection data, and the app ignored the macOS device URI | Fixed (macOS untested) |
 
 ## Details
 
@@ -161,9 +162,9 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 ### LM-017 · P3 · Docs · Fixed
 **Fix:** README gained printer setup, what "sent" means, unsigned-installer warnings for Windows and macOS, a Testing section (including the Chromium requirement and `PLAYWRIGHT_CHROMIUM_EXECUTABLE`), a Known limitations list, and accurate feature bullets (font substitution, print safety, settings recovery).
 
-### LM-018 · P3 · Repo · Partly fixed
-**Fixed:** `.gitattributes` (LF everywhere, no more CRLF warnings and no spurious changes in existing files); `worktrees/`, `.worktrees/` and `.claude/worktrees/` ignored.
-**Still open (needs a decision, nothing deleted):** `main` is two commits behind while `build-v1` is the GitHub default; `codex/label-maker-mvp` carries two unmerged commits that are older than the current code; the merged `claude/dazzling-dirac-65c965` branch and its worktree can be removed.
+### LM-018 · P3 · Repo · Fixed
+**Fixed:** `.gitattributes` (LF everywhere); `worktrees/`, `.worktrees/` and `.claude/worktrees/` ignored. On the owner's go-ahead the stale local branches and their worktrees were removed: `main` (fully contained in `build-v1`), `claude/dazzling-dirac-65c965` (merged) and `codex/label-maker-mvp`. The last carried two commits (`8e7374f`, `1c2d995`) older than the current code, and uncommitted icon edits that are identical to what `build-v1` already has (same PNG hash, same `package.json`, `window.ts` and `index.html` lines). None of these branches existed on origin.
+**Left behind:** an empty `.claude/worktrees/dazzling-dirac-65c965` folder that another process holds open; delete it once that session is closed. The nine `dependabot/*` branches on origin belong to open Dependabot pull requests and were not touched.
 
 ### LM-019 · P2 · Tests · Fixed
 **Where:** `playwright.config.ts`.
@@ -171,10 +172,10 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Fix:** The web server gets an isolated `LABELMAKER_USER_DATA_DIR`; `PLAYWRIGHT_CHROMIUM_EXECUTABLE` selects an installed Chromium.
 **Verified:** `npx playwright test` passes with the variable set; the real settings file is untouched.
 
-### LM-020 · P2 · Printers · Decision
+### LM-020 · P2 · Printers · Closed by decision
 **Evidence:** The native helper reports the SP310 queue's default paper as 76.2 × 127 mm (3 × 5 in), not DYMO 30334 (57.15 × 31.75 mm). Printing works because Electron is given an explicit page size.
-**Problem:** Technical spec §8 asks the app to validate effective media and the unprintable area against the profile and block on mismatch. Nothing consumes the helper's numbers.
-**Decision needed:** Block on mismatch (risks blocking a setup that prints fine today) or only warn.
+**Decision (owner, 2026-11-17):** Each printer has one fixed stock for now: 4 × 6 in for the SP410 and 2.25 × 1.25 in for the SP310. There is no paper selection and no validation of the driver's default media. Printing on both real printers was checked and looked right.
+**If this changes:** paper choice would need the helper's media numbers (already reported by `inspect_printer`) compared with the profile, and a policy for a mismatch.
 
 ### LM-021 · P2 · Startup · Fixed
 **Where:** new IPC `app:get-launch-info`, `settingsService.ts` `isFreshInstall`, `App.tsx`.
@@ -193,9 +194,10 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Problem:** The `printer_unverified` reason could be returned but the UI never handled it, so such a job would have been submitted without asking.
 **Fix:** Queues whose connection type is unknown can no longer be selected without the USB confirmation in Settings (earlier fix), so the reason was dead. It is removed. The UI now asks every returned confirmation in order.
 
-### LM-024 · P3 · Deps · Decision
-**Evidence:** `npm audit` reports 9 findings (2 critical, 7 moderate), all in `vitest`, `tinypool` and `electron-builder`.
-**Problem:** The suggested fixes are major version moves (including an `electron-builder` downgrade). They affect build and test tooling only, not the shipped app.
+### LM-024 · P3 · Deps · Fixed
+**Evidence:** `npm audit` reported 9 findings (2 critical, 7 moderate): `vitest` and `tinypool` (prototype pollution leading to code execution in test workers), `@vitest/mocker`, and `minimatch` (denial of service) under `electron-builder`. All are build and test tooling, not the shipped app.
+**Fix:** `vitest` 3.2.7 to 5.1.0 (its peer ranges allow the current Vite 6 and Node 22); `electron-builder` 26.15 to 26.18.1; `overrides` send the `minimatch` that `app-builder-lib` and `@electron/universal` ask for (9 and 10) to 11.0.1 or later, the first fixed release. `npm audit fix --force` was not used: it proposed an electron-builder 25.1.0 downgrade.
+**Verified:** `npm audit` reports 0 vulnerabilities; typecheck, lint, 130 unit, 44 UI and 12 Electron tests pass; `electron-builder --win --dir` builds and the packaged smoke test passes.
 
 ### LM-025 · P0 · Editor · Fixed
 **Where:** `LabelEditor.tsx`, `LabelSurface.tsx` (the label text was read with `innerText`).
@@ -345,6 +347,18 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Problem:** `app.whenReady().then(bootstrap)` had no failure path, so an error while starting left a running process with no window and no message.
 **Fix:** The error is logged, shown in an error box, and the app quits.
 
+### LM-053 · P1 · CI · Fixed
+**Where:** `package.json` (`pretest:electron`), CI run 44087775714.
+**Problem:** Electron 45 no longer downloads its binary when the package is installed; it fetches it the first time something starts it. `npm run test:electron` runs two Playwright workers that start the app at the same moment, so on a fresh runner both downloaded into the same folder and one failed (`Cannot create a file when that file already exists`, then `Access is denied`). Two print-layout tests failed on Windows. Locally the binary was already there, so it never showed.
+**Fix:** `pretest:electron` runs Electron's own installer once before the workers start (a no-op when the binary is present).
+**Verified:** all 12 Electron tests pass locally. The fresh-runner case can only be confirmed by a CI run.
+
+### LM-054 · P2 · CI / Printers · Fixed (macOS untested)
+**Where:** `printerAdapter.ts` `detectTransport`, `printerService.ts` `scan`, `tests/unit/printerService.test.ts`.
+**Problem:** CI on macOS failed `rejects network and Bluetooth queues even when the user confirms them`. The test's fake Electron printer list had no connection data, and on macOS the app only looked at a Windows-style port name, which Electron does not report. A network queue therefore had an unknown connection and could be confirmed as USB. The same gap exists for real macOS users: an unrecognised queue could be confirmed as USB even when CUPS says it is `ipp://` or `socket://`.
+**Fix:** On macOS the CUPS `device-uri` from Electron's printer options now stands in for the port, and `detectTransport` reads its scheme (`usb`, `bluetooth`, `ipp`, `ipps`, `http`, `https`, `socket`, `lpd`, `dnssd`, `mdns`, `smb`). A host name such as `usb-hub.local` inside a network URI is not taken for USB. The printer service tests now run once as `win32` and once as `darwin`.
+**Verified:** the `darwin` run fails when the URI mapping is removed and passes with it; 130 unit tests pass. No Mac was available: that Electron passes the CUPS `device-uri` option through in `options` is assumed from how CUPS destinations are reported, not observed. If the key is absent the behaviour is as before (unknown connection, USB confirmation required).
+
 ## Run log
 
 - 2026-11-17 01:44 EST — file created from the first code review plus the zod upgrade work.
@@ -358,3 +372,4 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 - 2026-11-17 02:33 EST — LM-043 to LM-048: print-page handshake (intermittent lost job), toolbar accessibility, stricter CSP, print-document PDF tests, second-instance test.
 - 2026-11-17 07:47 EST — LM-049 to LM-052: ESLint added (87 findings fixed), splash failsafe, typed helper output, startup failure handling. Full suite green: 123 unit, 12 Electron, 44 UI, packaged smoke.
 - 2026-11-17 09:08 EST — Owner tested both real printers (SP410, SP310) from `build-v1` at 6b09da4: "looks good". Pushed to origin earlier; CI run 44087775714 not yet checked.
+- 2026-11-17 09:17 EST — Owner confirmed both printers print correctly and decided: fixed stock per printer (4 × 6 and 2.25 × 1.25), no paper selection, stale branches may go, audit flags and version bumps wanted. First CI run (44087775714) had failed: LM-053 and LM-054 found and fixed. LM-018 (branches), LM-020 (closed by decision) and LM-024 (0 vulnerabilities) done.

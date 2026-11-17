@@ -39,4 +39,16 @@ describe('Printer Matching and Eligibility', () => {
     expect(detectTransport('WSD-1234', 'SP410')).toBe('network');
     expect(detectTransport('LPT1', 'SP410')).toBe('unknown');
   });
+
+  it('reads the connection from a macOS device URI, ignoring words inside the host name', () => {
+    expect(detectTransport('usb://iDPRT/SP410BT?serial=123')).toBe('usb');
+    expect(detectTransport('ipp://printer.local:631/ipp/print')).toBe('network');
+    expect(detectTransport('socket://10.0.0.9:9100')).toBe('network');
+    expect(detectTransport('dnssd://Office._ipp._tcp.local./')).toBe('network');
+    expect(detectTransport('bluetooth://00-11-22-33-44-55')).toBe('bluetooth');
+    // "usb" in a host name does not make a network queue a USB one.
+    expect(detectTransport('ipp://usb-hub.local/ipp/print')).toBe('network');
+    expect(detectTransport('file:///dev/null')).toBe('unknown');
+    expect(detectTransport('')).toBe('unknown');
+  });
 });
