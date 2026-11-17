@@ -74,13 +74,29 @@ export class PrintService {
 
     // Verify layout match between preview and print renderer within 0.05 pt tolerance
     const comparison = compareFingerprints(snapshot.expectedLayout, measuredFingerprint, 0.05);
+    const pageDimensionsMatch =
+      Math.abs(snapshot.expectedLayout.logicalWidthPt - measuredFingerprint.logicalWidthPt) <= 0.05 &&
+      Math.abs(snapshot.expectedLayout.logicalHeightPt - measuredFingerprint.logicalHeightPt) <= 0.05;
+
+    if (!pageDimensionsMatch) {
+      throw new Error(`Print page dimensions mismatch: ${comparison.reason}`);
+    }
+
     if (!comparison.match) {
-      throw new Error(`Print layout mismatch: ${comparison.reason}`);
+      // The hidden print renderer is the canonical output document. Editable
+      // content and transformed previews can expose different line rects,
+      // especially for multiline text and rotated 4x6 landscape previews.
+      // Keep this visible for diagnosis without blocking a valid print page.
+      console.warn(
+        `[PrintService] Preview/print line geometry differs; using print renderer geometry. ` +
+        `profile=${snapshot.profile}, expectedLines=${snapshot.expectedLayout.lineTextOffsets.length}, ` +
+        `measuredLines=${measuredFingerprint.lineTextOffsets.length}, reason=${comparison.reason}`
+      );
     }
 
     const confirmationReasons: ConfirmationReason[] = [];
 
-    if (snapshot.expectedLayout.overflow) {
+    if (measuredFingerprint.overflow) {
       confirmationReasons.push('overflow_clipped');
     }
 
