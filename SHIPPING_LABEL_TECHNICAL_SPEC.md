@@ -523,7 +523,7 @@ data[p] = Math.round(lum * a + 255 * (1 - a));
 
 ### 6.2 `thresholdRgbaInPlace(rgba: Uint8ClampedArray, threshold: number): { blackPixels: number }`
 
-For each pixel, compute the alpha-composited luminance as above, then set `v = lum < threshold ? 0 : 255`, write `r = g = b = v` and `a = 255`, and count black pixels. Return the count (used for the "blank" check: `blackPixels === 0`).
+For each pixel, compute the alpha-composited luminance as above (rounded with `Math.round`, exactly as in `toGray`, so a gray of 160 is not black at threshold 160 because of floating-point error), then set `v = lum < threshold ? 0 : 255`, write `r = g = b = v` and `a = 255`, and count black pixels. Return the count (used for the "blank" check: `blackPixels === 0`).
 
 ### 6.3 `peelUniformBorders(img: GrayImage): PxRect`
 
@@ -558,6 +558,8 @@ const MIN_GAP_IN = 0.15;               // whitespace needed to split regions
 const RULE_MAX_THICKNESS_IN = 0.06;    // thin full-width lines (fold/cut lines) are erased
 const RULE_MIN_SPAN = 0.8;             // ... if their ink spans ≥ 80% of the page dimension
 const RULE_MIN_COVERAGE = 0.3;         // ... and covers ≥ 30% of it (dashed lines qualify)
+const RULE_MIN_LENGTH_IN = 7.0;        // ... and is longer than any label could be (= L_MAX)
+const RULE_MAX_INNER_GAP_IN = 0.25;    // ... and has no gap longer than this (dashes, not unrelated content)
 const MAX_DEPTH = 6;
 const PAD_IN = 0.06;
 // Candidate limits, in inches, on the trimmed ink box (short side s, long side l):
@@ -567,7 +569,11 @@ const S_MIN = 2.5, S_MAX = 4.6, L_MIN = 3.75, L_MAX = 7.0, RATIO_MIN = 1.2, RATI
 Steps:
 
 1. **Ink mask.** `ink[i] = img.data[i] < INK_LEVEL ? 1 : 0` (a `Uint8Array`).
-2. **Erase fold/cut lines.** For each row `y`: let `first`/`last` be the first/last ink x and `count` the ink count. Mark the row as a *rule row* if `last - first + 1 >= RULE_MIN_SPAN * width` and `count >= RULE_MIN_COVERAGE * width`. Group consecutive rule rows. Clear every group whose height is `<= ceil(RULE_MAX_THICKNESS_IN * dpi)` (set its ink to 0). Do the same for columns, using `height`. Thick bands are kept, because they may be part of a label.
+2. **Erase fold/cut lines.** For each row `y`: let `first`/`last` be the first/last ink x, `count` the ink count, and `widestGap` the longest run of non-ink pixels between `first` and `last`. Mark the row as a *rule row* only if **all** of these hold: `last - first + 1 >= RULE_MIN_SPAN * width`; `last - first + 1 > RULE_MIN_LENGTH_IN * dpi`; `count >= RULE_MIN_COVERAGE * width`; `widestGap <= RULE_MAX_INNER_GAP_IN * dpi`.
+
+   Why the last two (found in Phase 2): without them, the column through a label's left border also passes through the packing-slip text below it. Together they span most of the page, so the label's own border was erased and the label fell apart. The same happened to a label's border on a page that is itself label-sized. A real fold line is longer than any label and has only short dash gaps.
+
+   Group consecutive rule rows. Clear every group whose height is `<= ceil(RULE_MAX_THICKNESS_IN * dpi)` (set its ink to 0). Do the same for columns, using `height`. Thick bands are kept, because they may be part of a label.
 3. **XY-cut tree.** Collect candidate rects recursively:
 
    ```text
@@ -1393,8 +1399,8 @@ Cases (map to FS §7):
 3. **S03** in Text mode, focus the editor and paste a DataTransfer with both `text/plain` and an image → text inserted, still Text mode. Paste an image-only DataTransfer → Shipping label mode with a preview.
 4. **S04** paste a 900 × 600 snip → preview present. Check the rotation by reading the preview pixels: draw the preview `img` to a canvas in the page and assert a black marker drawn in the snip's top-left corner ends up in the top-right of the output.
 5. **S05** paste a 300 × 450 snip → low-resolution warning visible.
-6. **S06** `ebay-letter.pdf` via file input → dialog open; `data-crop` within ±0.03 of `0.047,0.036,0.482,0.567` (that is, (36 − 4)/612, (36 − 4)/792, (288 + 8)/612, (432 + 8)/792; recompute these numbers from your actual fixture and padding and write them into the test). Use this area → preview present; Print enabled.
-7. **S07** `ups-letter.pdf` → `data-crop` around the landscape label and not extending below y = 396/792; after Use this area, the output is portrait (check the preview's natural size is 812 × 1218 and the rotation marker as in case 4).
+6. **S06** `ebay-letter.pdf` via file input → dialog open; `data-crop` within ±0.03 of `0.049,0.038,0.489,0.560` (measured in Phase 2 from the pdf.js render of this fixture at `ANALYSIS_DPI`). Use this area → preview present; Print enabled.
+7. **S07** `ups-letter.pdf` → `data-crop` within ±0.03 of `0.139,0.044,0.722,0.378` (measured in Phase 2), so not extending below the fold line at y = 396/792 = 0.5; after Use this area, the output is portrait (check the preview's natural size is 812 × 1218 and the rotation marker as in case 4).
 8. **S08** `label-4x6.pdf` and `label-6x4.pdf` → no dialog; preview present.
 9. **S09** `two-page.pdf` → dialog shows `Page 2 of 2` and `Found a label on page 2.`
 10. **S10** `no-label.pdf` → "Couldn't find a 4 × 6 label…" status.
