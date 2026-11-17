@@ -103,7 +103,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
   const profileLabel = isSmallProfile ? '2 × 1' : '4 × 6';
 
   return (
-    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2.5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2.5 shadow-xs dark:border-slate-800 dark:bg-slate-900">
       <div className="flex flex-wrap items-center gap-3">
         {/* Stock profile tabs */}
         <div className="flex rounded-md border border-slate-200 bg-slate-50 p-0.5 dark:border-slate-700 dark:bg-slate-800" role="tablist" aria-label="Label stock profile">
@@ -117,9 +117,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
                 role="tab"
                 aria-selected={activeProfile === profile}
                 onClick={() => handleProfileChange(profile)}
-                className={`rounded px-2.5 py-1 text-xs font-semibold transition-colors ${
+                className={`rounded-sm px-2.5 py-1 text-xs font-semibold transition-colors ${
                   activeProfile === profile
-                    ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-700 dark:text-blue-400'
+                    ? 'bg-white text-blue-600 shadow-xs dark:bg-slate-700 dark:text-blue-300'
                     : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
                 }`}
                 title={`${label} label profile for ${model}`}
@@ -130,8 +130,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
           })}
         </div>
 
-        <div className="flex items-center gap-1.5 rounded bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-          <span className="text-slate-400">Stock:</span> {isSmallProfile ? 'DYMO 30334 · 2¼ × 1¼ in' : '4 × 6 in'}
+        <div className="flex items-center gap-1.5 rounded-sm bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+          <span className="text-slate-600 dark:text-slate-400">Stock:</span> {isSmallProfile ? 'DYMO 30334 · 2¼ × 1¼ in' : '4 × 6 in'}
         </div>
 
         {/* Orientation Toggle */}
@@ -140,9 +140,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
             type="button"
             onClick={() => handleOrientationChange('portrait')}
             aria-pressed={draft.orientation === 'portrait'}
-            className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+            className={`rounded-sm px-2.5 py-1 text-xs font-medium transition-colors ${
               draft.orientation === 'portrait'
-                ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-700 dark:text-blue-400'
+                ? 'bg-white text-blue-600 shadow-xs dark:bg-slate-700 dark:text-blue-300'
                 : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
             }`}
             title="Portrait Layout (4 x 6)"
@@ -153,9 +153,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
             type="button"
             onClick={() => handleOrientationChange('landscape')}
             aria-pressed={draft.orientation === 'landscape'}
-            className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+            className={`rounded-sm px-2.5 py-1 text-xs font-medium transition-colors ${
               draft.orientation === 'landscape'
-                ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-700 dark:text-blue-400'
+                ? 'bg-white text-blue-600 shadow-xs dark:bg-slate-700 dark:text-blue-300'
                 : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
             }`}
             title="Landscape Layout (6 x 4)"
@@ -163,7 +163,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
             Landscape
           </button>
         </div> : (
-          <div className="rounded bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300" title="The SP310 outputs this stock in landscape orientation">
+          <div className="rounded-sm bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300" title="The SP310 outputs this stock in landscape orientation">
             Landscape
           </div>
         )}
@@ -187,11 +187,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
             aria-label={`Font family: ${draft.preferredFontFamily}`}
             aria-haspopup="true"
             aria-expanded={fontPickerOpen}
-            className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 w-36"
+            className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 w-36"
             title="Select Font Family"
           >
             <span className="truncate">{draft.preferredFontFamily}</span>
-            <span className="text-[10px] text-slate-400">▼</span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400">▼</span>
           </button>
 
           {fontPickerOpen && (
@@ -201,7 +201,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
                 value={fontSearchQuery}
                 onChange={(e) => setFontSearchQuery(e.target.value)}
                 placeholder="Search installed fonts..."
-                className="w-full rounded border border-slate-200 px-2 py-1 text-xs text-slate-800 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                className="w-full rounded-sm border border-slate-200 px-2 py-1 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 autoFocus
               />
               <div className="mt-2 max-h-48 overflow-y-auto">
@@ -210,7 +210,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
                     key={font.family}
                     type="button"
                     onClick={() => handleFontSelect(font.family)}
-                    className={`w-full text-left px-2 py-1 text-xs rounded truncate hover:bg-slate-100 dark:hover:bg-slate-700 ${
+                    className={`w-full text-left px-2 py-1 text-xs rounded-sm truncate hover:bg-slate-100 dark:hover:bg-slate-700 ${
                       font.family === draft.preferredFontFamily
                         ? 'font-semibold text-blue-600 dark:text-blue-400'
                         : 'text-slate-700 dark:text-slate-300'
@@ -221,7 +221,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
                   </button>
                 ))}
                 {filteredFonts.length === 0 && (
-                  <div className="p-2 text-center text-xs text-slate-400">No matching fonts</div>
+                  <div className="p-2 text-center text-xs text-slate-500 dark:text-slate-400">No matching fonts</div>
                 )}
               </div>
             </div>
@@ -230,10 +230,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
 
         {/* Font Size */}
         <div className="flex items-center gap-1">
-          <label htmlFor="fontSizeInput" className="text-xs text-slate-500">
+          <label htmlFor="fontSizeInput" className="text-xs text-slate-500 dark:text-slate-400">
             Size:
           </label>
-          <div className="flex items-center rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+          <div className="flex items-center rounded-md border border-slate-200 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/50 dark:border-slate-700 dark:bg-slate-800">
             <input
               id="fontSizeInput"
               type="text"
@@ -246,10 +246,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
                 if (e.key === 'Enter') handleFontSizeCommit((e.target as HTMLInputElement).value);
                 if (e.key === 'Escape') setFontSizeDraft(draft.fontSizePt.toString());
               }}
-              className={`w-12 px-1.5 py-1 text-center text-xs focus:outline-none dark:bg-transparent ${fontSizeResult.ok ? 'text-slate-800 dark:text-slate-200' : 'text-red-600 dark:text-red-400'}`}
+              className={`w-12 px-1.5 py-1 text-center text-xs focus:outline-hidden dark:bg-transparent ${fontSizeResult.ok ? 'text-slate-800 dark:text-slate-200' : 'text-red-600 dark:text-red-400'}`}
               title="Font point size (6 - 288)"
             />
-            <span className="pr-1 text-[10px] text-slate-400">pt</span>
+            <span className="pr-1 text-[10px] text-slate-500 dark:text-slate-400">pt</span>
             <div className="flex flex-col border-l border-slate-200 dark:border-slate-700">
               <button
                 type="button"
@@ -293,9 +293,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
               onClick={() => handleAlignmentChange(align)}
               aria-label={`Align ${align}`}
               aria-pressed={draft.alignment === align}
-              className={`rounded px-2 py-1 text-xs capitalize transition-colors ${
+              className={`rounded-sm px-2 py-1 text-xs capitalize transition-colors ${
                 draft.alignment === align
-                  ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-700 dark:text-blue-400'
+                  ? 'bg-white text-blue-600 shadow-xs dark:bg-slate-700 dark:text-blue-300'
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
               }`}
               title={`Align ${align}`}
@@ -307,10 +307,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
 
         {/* Copies */}
         <div className="flex items-center gap-1">
-          <label htmlFor="copiesInput" className="text-xs text-slate-500">
+          <label htmlFor="copiesInput" className="text-xs text-slate-500 dark:text-slate-400">
             Copies:
           </label>
-          <div className="flex items-center rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+          <div className="flex items-center rounded-md border border-slate-200 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/50 dark:border-slate-700 dark:bg-slate-800">
             <input
               id="copiesInput"
               type="text"
@@ -323,7 +323,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
                 if (e.key === 'Enter') handleCopiesCommit((e.target as HTMLInputElement).value);
                 if (e.key === 'Escape') setCopiesDraft(draft.copies.toString());
               }}
-              className={`w-10 px-1 py-1 text-center text-xs focus:outline-none dark:bg-transparent ${copiesResult.ok ? 'text-slate-800 dark:text-slate-200' : 'text-red-600 dark:text-red-400'}`}
+              className={`w-10 px-1 py-1 text-center text-xs focus:outline-hidden dark:bg-transparent ${copiesResult.ok ? 'text-slate-800 dark:text-slate-200' : 'text-red-600 dark:text-red-400'}`}
               title="Number of copies (1 - 99)"
             />
             <div className="flex flex-col border-l border-slate-200 dark:border-slate-700">
@@ -372,7 +372,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onPrintClick }) => {
           type="button"
           onClick={onPrintClick}
           disabled={isPrintDisabled}
-          className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors ${
+          className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-semibold text-white shadow-xs transition-colors ${
             isPrintDisabled
               ? 'bg-slate-300 cursor-not-allowed dark:bg-slate-700 dark:text-slate-500'
               : 'bg-blue-600 hover:bg-blue-700'

@@ -13,27 +13,7 @@ export const PrintDocument: React.FC = () => {
   useEffect(() => {
     if (!window.printApi) return;
 
-    const unsubscribe = window.printApi.onJob((job) => {
-      setSnapshot(job);
-
-      void (async () => {
-        // Ensure the font is fully loaded in this window
-        await ensureFontLoaded(job.resolvedFontFamily, job.fontSizePt, job.text || 'A');
-
-        // Request next animation frame to ensure browser layout has completed
-        requestAnimationFrame(() => {
-          if (containerRef.current) {
-            const fingerprint = measureLayoutFingerprint(
-              containerRef.current,
-              job.profile,
-              job.orientation,
-              job.profile === '4x6' && job.orientation === 'landscape'
-            );
-            window.printApi.reportReady(job.requestId, fingerprint);
-          }
-        });
-      })();
-    });
+    const unsubscribe = window.printApi.onJob(setSnapshot);
 
     // Main waits for this before sending the first job; a job sent while the
     // page was still loading would be lost.
@@ -41,6 +21,37 @@ export const PrintDocument: React.FC = () => {
 
     return unsubscribe;
   }, []);
+
+  // Measure only after React has drawn THIS job's label. Measuring from the job callback
+  // could run before the page was updated and report the label shown before it, which decides
+  // whether the user is asked about a clipped label.
+  useEffect(() => {
+    if (!snapshot) return;
+    let cancelled = false;
+
+    void (async () => {
+      // Ensure the font is fully loaded in this window
+      await ensureFontLoaded(snapshot.resolvedFontFamily, snapshot.fontSizePt, snapshot.text || 'A');
+
+      // Wait for the next animation frame so the browser has finished laying the page out
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+      const container = containerRef.current;
+      if (cancelled || !container) return;
+
+      const fingerprint = measureLayoutFingerprint(
+        container,
+        snapshot.profile,
+        snapshot.orientation,
+        snapshot.profile === '4x6' && snapshot.orientation === 'landscape'
+      );
+      window.printApi.reportReady(snapshot.requestId, fingerprint);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [snapshot]);
 
   if (!snapshot) {
     return <div className="text-gray-400 p-4">Awaiting print snapshot...</div>;

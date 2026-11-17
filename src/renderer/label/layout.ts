@@ -3,6 +3,15 @@ import { getPageDimensions } from './geometry';
 
 const PT_PER_PX = 72 / 96; // 0.75
 
+/**
+ * Lines are found by measuring every character, which costs about 8 microseconds each (about
+ * 45 ms for 6,000 characters, 340 ms for 36,000). Even at 6 pt a label holds well under 6,000
+ * characters, so a longer text is certainly clipped. For those only the overflow answer (one
+ * height reading) is taken and the line list is left as the single-line fallback. The editor and
+ * the print window use this same function, so they still agree with each other.
+ */
+export const MAX_MEASURED_CHARACTERS = 6000;
+
 function getAncestorVisualScale(element: HTMLElement): number {
   let scale = 1;
   let ancestor = element.parentElement;
@@ -93,7 +102,7 @@ export function measureLayoutFingerprint(
     };
   };
 
-  if (textNode && textNode.nodeType === Node.TEXT_NODE && textNode.textContent) {
+  if (textNode && textNode.nodeType === Node.TEXT_NODE && textNode.textContent && textNode.textContent.length <= MAX_MEASURED_CHARACTERS) {
     const text = textNode.textContent;
     let currentLineCoordinate = -99999;
     let currentLineStart = 0;
@@ -174,26 +183,37 @@ export function measureLayoutFingerprint(
   };
 }
 
+export interface FingerprintComparison {
+  match: boolean;
+  reason?: string;
+  /**
+   * What differs. 'size' is the page itself; 'overflow' and 'lines' mean the text is laid out
+   * differently (a visible difference); 'geometry' is only a small shift of a line's box.
+   */
+  kind?: 'size' | 'overflow' | 'lines' | 'geometry';
+}
+
 export function compareFingerprints(
   f1: LayoutFingerprint,
   f2: LayoutFingerprint,
   tolerancePt = 0.05
-): { match: boolean; reason?: string } {
+): FingerprintComparison {
   if (Math.abs(f1.logicalWidthPt - f2.logicalWidthPt) > tolerancePt) {
-    return { match: false, reason: `Width mismatch: ${f1.logicalWidthPt} vs ${f2.logicalWidthPt}` };
+    return { match: false, kind: 'size', reason: `Width mismatch: ${f1.logicalWidthPt} vs ${f2.logicalWidthPt}` };
   }
 
   if (Math.abs(f1.logicalHeightPt - f2.logicalHeightPt) > tolerancePt) {
-    return { match: false, reason: `Height mismatch: ${f1.logicalHeightPt} vs ${f2.logicalHeightPt}` };
+    return { match: false, kind: 'size', reason: `Height mismatch: ${f1.logicalHeightPt} vs ${f2.logicalHeightPt}` };
   }
 
   if (f1.overflow !== f2.overflow) {
-    return { match: false, reason: `Overflow flag mismatch: ${f1.overflow} vs ${f2.overflow}` };
+    return { match: false, kind: 'overflow', reason: `Overflow flag mismatch: ${f1.overflow} vs ${f2.overflow}` };
   }
 
   if (f1.lineTextOffsets.length !== f2.lineTextOffsets.length) {
     return {
       match: false,
+      kind: 'lines',
       reason: `Line count mismatch: ${f1.lineTextOffsets.length} vs ${f2.lineTextOffsets.length}`,
     };
   }
@@ -202,6 +222,7 @@ export function compareFingerprints(
     if (f1.lineTextOffsets[i] !== f2.lineTextOffsets[i]) {
       return {
         match: false,
+        kind: 'lines',
         reason: `Line ${i} offset mismatch: ${f1.lineTextOffsets[i]} vs ${f2.lineTextOffsets[i]}`,
       };
     }
@@ -213,6 +234,7 @@ export function compareFingerprints(
     if (mismatchedField) {
       return {
         match: false,
+        kind: 'geometry',
         reason: `Line ${i} ${mismatchedField} mismatch: ${r1[mismatchedField].toFixed(3)} vs ${r2[mismatchedField].toFixed(3)}pt (tolerance ${tolerancePt}pt)`,
       };
     }

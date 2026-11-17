@@ -5,11 +5,11 @@ import renderer from 'vite-plugin-electron-renderer';
 import path from 'path';
 
 const alias = {
-  '@': path.resolve(__dirname, 'src'),
-  '@main': path.resolve(__dirname, 'src/main'),
-  '@preload': path.resolve(__dirname, 'src/preload'),
-  '@renderer': path.resolve(__dirname, 'src/renderer'),
-  '@shared': path.resolve(__dirname, 'src/shared'),
+  '@': path.resolve(import.meta.dirname, 'src'),
+  '@main': path.resolve(import.meta.dirname, 'src/main'),
+  '@preload': path.resolve(import.meta.dirname, 'src/preload'),
+  '@renderer': path.resolve(import.meta.dirname, 'src/renderer'),
+  '@shared': path.resolve(import.meta.dirname, 'src/shared'),
 };
 
 function devServerWithoutContentSecurityPolicy(): Plugin {
@@ -38,8 +38,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: path.resolve(__dirname, 'index.html'),
-        print: path.resolve(__dirname, 'print.html'),
+        main: path.resolve(import.meta.dirname, 'index.html'),
+        print: path.resolve(import.meta.dirname, 'print.html'),
       },
     },
   },
@@ -68,11 +68,11 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron/preload',
             rollupOptions: {
-              input: path.resolve(__dirname, 'src/preload/index.ts'),
+              input: path.resolve(import.meta.dirname, 'src/preload/index.ts'),
               external: ['electron'],
               output: {
                 format: 'cjs',
-                inlineDynamicImports: true,
+                codeSplitting: false,
                 entryFileNames: 'index.cjs',
               },
             },
@@ -85,11 +85,11 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron/preload',
             rollupOptions: {
-              input: path.resolve(__dirname, 'src/preload/print.ts'),
+              input: path.resolve(import.meta.dirname, 'src/preload/print.ts'),
               external: ['electron'],
               output: {
                 format: 'cjs',
-                inlineDynamicImports: true,
+                codeSplitting: false,
                 entryFileNames: 'print.cjs',
               },
             },

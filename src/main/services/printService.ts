@@ -163,18 +163,22 @@ export class PrintService {
     }
 
     if (!comparison.match) {
-      // The hidden print renderer is the canonical output document. Editable
-      // content and transformed previews can expose different line rects,
-      // especially for multiline text and rotated 4x6 landscape previews.
-      // Keep this visible for diagnosis without blocking a valid print page.
+      // The hidden print renderer is the canonical output document, so a small shift of
+      // a line's box is only logged. A different line count, different line starts or a
+      // different overflow answer means the paper will not look like the preview: that
+      // is put to the user below instead of being printed silently.
       console.warn(
-        `[PrintService] Preview/print line geometry differs; using print renderer geometry. ` +
+        `[PrintService] Preview/print layout differs (${comparison.kind}); using print renderer geometry. ` +
         `profile=${snapshot.profile}, expectedLines=${snapshot.expectedLayout.lineTextOffsets.length}, ` +
         `measuredLines=${measuredFingerprint.lineTextOffsets.length}, reason=${comparison.reason}`
       );
     }
 
     const confirmationReasons: ConfirmationReason[] = [];
+
+    if (comparison.kind === 'lines' || comparison.kind === 'overflow') {
+      confirmationReasons.push('layout_differs');
+    }
 
     if (measuredFingerprint.overflow) {
       confirmationReasons.push('overflow_clipped');

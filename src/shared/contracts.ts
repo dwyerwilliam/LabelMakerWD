@@ -104,7 +104,13 @@ export interface NormalizedQueue {
   queryTimestamp: number;
 }
 
-export type ConfirmationReason = 'overflow_clipped' | 'printer_unavailable';
+/**
+ * Why a print needs the user's agreement first:
+ * - layout_differs: the print window wrapped the text differently from the preview;
+ * - overflow_clipped: the text does not fit and will be clipped;
+ * - printer_unavailable: the queue is offline, paused or faulted.
+ */
+export type ConfirmationReason = 'layout_differs' | 'overflow_clipped' | 'printer_unavailable';
 
 export interface PrintPrepareResult {
   token?: string;

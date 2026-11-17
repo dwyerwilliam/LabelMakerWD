@@ -1,8 +1,7 @@
 # Label Maker — issue log
 
 Working log of problems found in this repository, kept up to date while they are fixed.
-Started **2026-11-17 01:44 EST**. Nothing here is committed or pushed; fixes stay in the
-working tree until they are reviewed.
+Started **2026-11-17 01:44 EST**. Fixes are committed on `build-v1`; see the run log for what was pushed.
 
 **Severity:** P0 breaks printing, loses data or is a security hole · P1 wrong behavior against the
 specs in common use · P2 edge case or hardening · P3 hygiene or polish.
@@ -14,7 +13,7 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 | --- | --- | --- | --- | --- |
 | LM-001 | P1 | Print | No submission watchdog; a lost print callback locks Print until restart | Fixed |
 | LM-002 | P1 | Print | Paused or errored queues print without the required confirmation | Fixed |
-| LM-003 | P2 | Print | Preview/print line-geometry mismatch only logs a warning | Decision |
+| LM-003 | P2 | Print | Preview/print line-geometry mismatch only logs a warning | Fixed (asks the user; see LM-058) |
 | LM-004 | P1 | Printers | A vanished saved queue is silently replaced by another queue (A05) | Fixed |
 | LM-005 | P1 | Printers | Failed capability queries report the queue as Ready | Fixed |
 | LM-006 | P2 | Printers | No rescan when the window regains focus | Fixed |
@@ -29,16 +28,16 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 | LM-015 | P1 | CI | No CI on pull requests; UI tests, lint and a real packaged smoke test are missing | Fixed (CI untested until pushed) |
 | LM-016 | P3 | CI | No Dependabot for npm and pinned actions | Fixed |
 | LM-017 | P3 | Docs | README lacks setup, unsigned-build, testing and limitation notes | Fixed |
-| LM-018 | P3 | Repo | No .gitattributes, untracked worktrees/ (fixed); stale branches (open) | Partly fixed |
+| LM-018 | P3 | Repo | No .gitattributes, untracked worktrees/, stale branches | Fixed |
 | LM-019 | P2 | Tests | UI tests start a real Electron on the real settings folder; browser path not configurable | Fixed |
-| LM-020 | P2 | Printers | Effective media (SP310 default 76.2 × 127 mm) is never validated against the profile | Decision |
+| LM-020 | P2 | Printers | Effective media (SP310 default 76.2 × 127 mm) is never validated against the profile | Closed by decision (fixed stock per printer) |
 | LM-021 | P2 | Startup | A machine with only an SP310 still opens on 4 × 6 (A01) | Fixed |
 | LM-022 | P3 | Print | Preparation tokens and request statuses are never pruned | Fixed |
 | LM-023 | P2 | Print | `printer_unverified` confirmation reason was produced but never handled (removed) | Fixed |
-| LM-024 | P3 | Deps | `npm audit`: vitest/tinypool (critical) and electron-builder (moderate), both dev tooling | Decision |
+| LM-024 | P3 | Deps | `npm audit`: vitest/tinypool (critical) and electron-builder/minimatch (moderate), both dev tooling | Fixed |
 | LM-025 | P0 | Editor | A blank line shows once in the editor but prints twice (WYSIWYG break) | Fixed |
 | LM-026 | P2 | Security | Pasted HTML is parsed with innerHTML on the live document | Fixed |
-| LM-027 | P3 | Performance | Layout measurement reads every character, so a very large label makes each keystroke slow | Open |
+| LM-027 | P3 | Performance | Layout measurement reads every character, so a very large label makes each keystroke slow | Fixed |
 | LM-028 | P1 | Print | Ctrl+P / Cmd+P ignored the toolbar's disabled state (no printer, invalid fields) | Fixed |
 | LM-029 | P1 | Print | When clipping and an unavailable printer both apply, only the first question was asked | Fixed |
 | LM-030 | P1 | Print | A stale status timer from an earlier print cleared the busy state of a newer print | Fixed |
@@ -64,6 +63,18 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 | LM-050 | P2 | Startup | The splash screen could stay on screen with no way to close it if the app page failed to load | Fixed |
 | LM-051 | P2 | Printers | Output of the native helpers and PowerShell was parsed untyped and trusted | Fixed |
 | LM-052 | P3 | Startup | A failure while starting up was swallowed: no window, no message | Fixed |
+| LM-053 | P1 | CI | The first CI run failed on Windows: two test workers raced to download the Electron binary | Fixed |
+| LM-054 | P2 | CI / Printers | The first CI run failed on macOS: the printer test fixture had no connection data, and the app ignored the macOS device URI | Fixed (macOS untested) |
+| LM-055 | P3 | Deps | Build tools a major version behind (Vite 6, Tailwind 3, plugin-react 4) and Node 22 as the baseline | Fixed |
+| LM-056 | P1 | Print | After a 4 × 6 landscape label was the first one shown, the print window reported "fits" for every later label, so the clipped-label question was never asked | Fixed |
+| LM-057 | P2 | Print | The print window could measure before React had drawn the new label | Fixed (not reproduced in isolation) |
+| LM-058 | P2 | Print | A label that wraps differently on paper than in the preview printed without a word | Fixed |
+| LM-059 | P3 | Tests | Spec A09 (same wrapping at any window size and display scale) had no test | Fixed (no defect found) |
+| LM-060 | P2 | Accessibility | The Tab key was trapped in the label editor (it typed four spaces), so keyboard users could not leave it | Fixed |
+| LM-061 | P2 | Accessibility | The Size and Copies fields showed no sign of keyboard focus | Fixed |
+| LM-062 | P2 | Accessibility | Text colours below the 4.5:1 contrast minimum in both themes; the font button turned unreadable under the mouse in the dark theme | Fixed |
+| LM-063 | P3 | Accessibility | Each printer choice in Settings was a button holding a radio button (two controls for one choice) | Fixed |
+| LM-064 | P3 | Repo | package.json had no author or license, and the packager warned about it on every build | Fixed |
 
 ## Details
 
@@ -79,10 +90,11 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Fix:** All three add the `printer_unavailable` reason (renamed from `printer_offline`). The dialog names the profile ("4 × 6 (SP410)"), the queue and the reported state.
 **Verified:** `it.each(['offline','paused','error'])` unit test; UI tests for the dialog text.
 
-### LM-003 · P2 · Print · Decision
-**Where:** `printService.ts` `prepare` (`compareFingerprints` mismatch is logged, not enforced).
-**Problem:** Technical spec §7 says a fingerprint mismatch aborts before spooling. The code deliberately relaxes this to a warning (commit "Allow canonical print renderer geometry") because the live editor and the rotated print sheet measure lines differently. Page dimensions are still enforced.
-**Proposed fix:** Needs a decision. Either keep the relaxation and update the spec, or measure the editor mirror exactly like the print sheet and enforce again.
+### LM-003 · P2 · Print · Fixed (asks the user; see LM-058)
+**Where:** `printService.ts` `prepare`, `layout.ts` `compareFingerprints`.
+**Problem:** Technical spec §7 says a fingerprint mismatch aborts before spooling. The code relaxed it to a log line (commit "Allow canonical print renderer geometry") because the editor and the print window disagreed, mostly for 4 × 6 landscape.
+**Finding:** The disagreement was not a rounding difference. Both sides were measuring the wrong element in landscape (LM-056), so every landscape label reported one line. A parity run of 405 labels (3 fonts, 3 sizes, 3 layouts, alignments, 11 awkward texts) matched exactly in 377 cases before the fixes; the other 28 were the landscape defect (21) and a stale measurement (7). After the fixes all 405 match within 0.05 pt.
+**Fix:** See LM-058. A moved line box is still only logged, a different wrap or overflow answer now asks the user, and a wrong page size still stops the print.
 
 ### LM-004 · P1 · Printers · Fixed
 **Where:** `src/shared/printerSelection.ts` (new `resolveQueueSelection`), `deviceStore.ts`, `PrinterStatus.tsx`, `SettingsDialog.tsx`.
@@ -161,9 +173,9 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 ### LM-017 · P3 · Docs · Fixed
 **Fix:** README gained printer setup, what "sent" means, unsigned-installer warnings for Windows and macOS, a Testing section (including the Chromium requirement and `PLAYWRIGHT_CHROMIUM_EXECUTABLE`), a Known limitations list, and accurate feature bullets (font substitution, print safety, settings recovery).
 
-### LM-018 · P3 · Repo · Partly fixed
-**Fixed:** `.gitattributes` (LF everywhere, no more CRLF warnings and no spurious changes in existing files); `worktrees/`, `.worktrees/` and `.claude/worktrees/` ignored.
-**Still open (needs a decision, nothing deleted):** `main` is two commits behind while `build-v1` is the GitHub default; `codex/label-maker-mvp` carries two unmerged commits that are older than the current code; the merged `claude/dazzling-dirac-65c965` branch and its worktree can be removed.
+### LM-018 · P3 · Repo · Fixed
+**Fixed:** `.gitattributes` (LF everywhere); `worktrees/`, `.worktrees/` and `.claude/worktrees/` ignored. On the owner's go-ahead the stale local branches and their worktrees were removed: `main` (fully contained in `build-v1`), `claude/dazzling-dirac-65c965` (merged) and `codex/label-maker-mvp`. The last carried two commits (`8e7374f`, `1c2d995`) older than the current code, and uncommitted icon edits that are identical to what `build-v1` already has (same PNG hash, same `package.json`, `window.ts` and `index.html` lines). None of these branches existed on origin.
+**Left behind:** an empty `.claude/worktrees/dazzling-dirac-65c965` folder that another process holds open; delete it once that session is closed. The nine `dependabot/*` branches on origin belong to open Dependabot pull requests and were not touched.
 
 ### LM-019 · P2 · Tests · Fixed
 **Where:** `playwright.config.ts`.
@@ -171,10 +183,10 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Fix:** The web server gets an isolated `LABELMAKER_USER_DATA_DIR`; `PLAYWRIGHT_CHROMIUM_EXECUTABLE` selects an installed Chromium.
 **Verified:** `npx playwright test` passes with the variable set; the real settings file is untouched.
 
-### LM-020 · P2 · Printers · Decision
+### LM-020 · P2 · Printers · Closed by decision
 **Evidence:** The native helper reports the SP310 queue's default paper as 76.2 × 127 mm (3 × 5 in), not DYMO 30334 (57.15 × 31.75 mm). Printing works because Electron is given an explicit page size.
-**Problem:** Technical spec §8 asks the app to validate effective media and the unprintable area against the profile and block on mismatch. Nothing consumes the helper's numbers.
-**Decision needed:** Block on mismatch (risks blocking a setup that prints fine today) or only warn.
+**Decision (owner, 2026-11-17):** Each printer has one fixed stock for now: 4 × 6 in for the SP410 and 2.25 × 1.25 in for the SP310. There is no paper selection and no validation of the driver's default media. Printing on both real printers was checked and looked right.
+**If this changes:** paper choice would need the helper's media numbers (already reported by `inspect_printer`) compared with the profile, and a policy for a mismatch.
 
 ### LM-021 · P2 · Startup · Fixed
 **Where:** new IPC `app:get-launch-info`, `settingsService.ts` `isFreshInstall`, `App.tsx`.
@@ -193,9 +205,10 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Problem:** The `printer_unverified` reason could be returned but the UI never handled it, so such a job would have been submitted without asking.
 **Fix:** Queues whose connection type is unknown can no longer be selected without the USB confirmation in Settings (earlier fix), so the reason was dead. It is removed. The UI now asks every returned confirmation in order.
 
-### LM-024 · P3 · Deps · Decision
-**Evidence:** `npm audit` reports 9 findings (2 critical, 7 moderate), all in `vitest`, `tinypool` and `electron-builder`.
-**Problem:** The suggested fixes are major version moves (including an `electron-builder` downgrade). They affect build and test tooling only, not the shipped app.
+### LM-024 · P3 · Deps · Fixed
+**Evidence:** `npm audit` reported 9 findings (2 critical, 7 moderate): `vitest` and `tinypool` (prototype pollution leading to code execution in test workers), `@vitest/mocker`, and `minimatch` (denial of service) under `electron-builder`. All are build and test tooling, not the shipped app.
+**Fix:** `vitest` 3.2.7 to 5.1.0 (its peer ranges allow the current Vite 6 and Node 22); `electron-builder` 26.15 to 26.18.1; `overrides` send the `minimatch` that `app-builder-lib` and `@electron/universal` ask for (9 and 10) to 11.0.1 or later, the first fixed release. `npm audit fix --force` was not used: it proposed an electron-builder 25.1.0 downgrade.
+**Verified:** `npm audit` reports 0 vulnerabilities; typecheck, lint, 130 unit, 44 UI and 12 Electron tests pass; `electron-builder --win --dir` builds and the packaged smoke test passes.
 
 ### LM-025 · P0 · Editor · Fixed
 **Where:** `LabelEditor.tsx`, `LabelSurface.tsx` (the label text was read with `innerText`).
@@ -209,10 +222,12 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Fix:** Parse with `DOMParser` into an inert document, then serialize.
 **Verified:** UI test pastes `<img src=x onerror=…>` and checks that nothing ran and no markup entered the label.
 
-### LM-027 · P3 · Performance · Open
+### LM-027 · P3 · Performance · Fixed
 **Where:** `src/renderer/label/layout.ts` `measureLayoutFingerprint`.
-**Problem:** Every text change measures every character with its own `Range.getBoundingClientRect()`. About 5,000 characters take ~36 ms per keystroke; 36,000 characters take ~300 ms, so pasting a huge block makes typing sluggish. A real label never holds that much, so this is low priority.
-**Proposed fix:** Measure line boxes with `getClientRects()` per text node, or only measure while a print is being prepared.
+**Problem:** Every text change measured every character with its own `Range.getBoundingClientRect()`. About 6,000 characters took ~45 ms; 36,000 characters took ~340 ms (filling the editor until Print was enabled), so pasting a huge block made typing sluggish.
+**Fix:** Past `MAX_MEASURED_CHARACTERS` (6,000) the per-character pass is skipped and only the overflow height is read. A label holds well under 6,000 characters even at 6 pt, so such a text is always clipped, and the editor and the print window use the same function so they still agree. The line list for those labels is the single-line fallback.
+**Measured:** 36,000 characters now settle in ~46 ms, the same as 1,000.
+**Verified:** UI test (just under the limit still measures every line; far over it reports one reading, overflow true, and Print still works); it fails without the cap.
 
 ### LM-028 · P1 · Print · Fixed
 **Where:** `App.tsx` `handlePrintClick`.
@@ -318,6 +333,7 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Problem:** Nothing checked what the print window produces. A regression in the page rules or the rotation would only show up on paper.
 **Fix:** The label is rendered in the real print window and exported with the same page rules; the PDF is inspected. Checks: exactly one page for every profile and orientation, including text that overflows; page size 288 × 432 pt for 4 × 6 portrait and landscape (landscape is composed sideways on portrait stock) and 162 × 90 pt for the 2 × 1; the landscape text runs top to bottom (a single clockwise quarter turn, not two); all text stays inside the safe inset.
 **Limit:** This is the document handed to the driver, not the printer's output. Physical acceptance (A17, A23) still needs the printers.
+**Physical check:** On 2026-11-17 the owner printed with both real printers (SP410 and SP310) from `build-v1` at 6b09da4 and reported that it looked good. Not recorded per case: SP310 stock match (LM-020) and the individual print-flow prompts.
 
 ### LM-048 · P3 · Tests · Fixed
 **Verified:** a second process started with the same settings folder quits by itself with exit code 0, no extra window opens, and the minimised window is restored.
@@ -344,6 +360,82 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Problem:** `app.whenReady().then(bootstrap)` had no failure path, so an error while starting left a running process with no window and no message.
 **Fix:** The error is logged, shown in an error box, and the app quits.
 
+### LM-053 · P1 · CI · Fixed
+**Where:** `package.json` (`pretest:electron`), CI run 44087775714.
+**Problem:** Electron 45 no longer downloads its binary when the package is installed; it fetches it the first time something starts it. `npm run test:electron` runs two Playwright workers that start the app at the same moment, so on a fresh runner both downloaded into the same folder and one failed (`Cannot create a file when that file already exists`, then `Access is denied`). Two print-layout tests failed on Windows. Locally the binary was already there, so it never showed.
+**Fix:** `pretest:electron` runs Electron's own installer once before the workers start (a no-op when the binary is present).
+**Verified:** all 12 Electron tests pass locally. The fresh-runner case can only be confirmed by a CI run.
+
+### LM-054 · P2 · CI / Printers · Fixed (macOS untested)
+**Where:** `printerAdapter.ts` `detectTransport`, `printerService.ts` `scan`, `tests/unit/printerService.test.ts`.
+**Problem:** CI on macOS failed `rejects network and Bluetooth queues even when the user confirms them`. The test's fake Electron printer list had no connection data, and on macOS the app only looked at a Windows-style port name, which Electron does not report. A network queue therefore had an unknown connection and could be confirmed as USB. The same gap exists for real macOS users: an unrecognised queue could be confirmed as USB even when CUPS says it is `ipp://` or `socket://`.
+**Fix:** On macOS the CUPS `device-uri` from Electron's printer options now stands in for the port, and `detectTransport` reads its scheme (`usb`, `bluetooth`, `ipp`, `ipps`, `http`, `https`, `socket`, `lpd`, `dnssd`, `mdns`, `smb`). A host name such as `usb-hub.local` inside a network URI is not taken for USB. The printer service tests now run once as `win32` and once as `darwin`.
+**Verified:** the `darwin` run fails when the URI mapping is removed and passes with it; 130 unit tests pass. No Mac was available: that Electron passes the CUPS `device-uri` option through in `options` is assumed from how CUPS destinations are reported, not observed. If the key is absent the behaviour is as before (unknown connection, USB confirmation required).
+
+### LM-055 · P3 · Deps · Fixed
+**Evidence:** Nine Dependabot pull requests opened on the first push (Vite 8, Tailwind 4, plugin-react 6, both electron plugins, @types/node 26, four GitHub Actions). CI, `.node-version` and `engines` were on Node 22, while Electron 45 embeds Node 24.22 and the owner develops on Node 26.
+**Fix (all local, nothing merged on GitHub):**
+- Vite 6 to 8.3.8, `@vitejs/plugin-react` 6.3.0, `vite-plugin-electron` 1.2.0, `vite-plugin-electron-renderer` 1.0.0. The config uses `import.meta.dirname` and `codeSplitting: false`, which removes the two Vite 8 warnings.
+- Tailwind 3.4 to 4.3.5 with `@tailwindcss/postcss`; `autoprefixer` and the empty `tailwind.config.js` are gone. Class names whose meaning changed were renamed (`rounded` to `rounded-sm`, `shadow-sm` to `shadow-xs`, `focus:outline-none` to `focus:outline-hidden`; 31 uses). Two Tailwind 3 defaults the app relied on are kept in `index.css`: the default border colour and the pointer cursor on buttons. Sources are limited to `index.html`, `print.html` and `src/`.
+- Node: `.node-version` 26.13.0 (what CI now runs and what the suites were verified on), `engines` `>=24`, `@types/node` 24 (Electron's Node, not the CI Node). The README says so.
+- Held on purpose: TypeScript stays on 5.9 (typescript-eslint supports up to 6.0) and `@types/node` on 24; Dependabot is told to skip those two majors.
+**Verified:** typecheck, lint, 130 unit, 44 UI, 12 Electron tests and the packaged smoke test; `npm audit` 0 vulnerabilities. Pixel comparison of ten screenshots (light and dark: editor, 2 × 1, settings, font list, confirmation) before and after Tailwind 4: identical layout everywhere. Colours shift slightly because Tailwind 4 uses a new palette (the Print button blue is a little brighter, dark backgrounds differ by a few levels), and the font-list arrow moves by a pixel.
+**Not covered:** the four GitHub Actions bumps (checkout 7, setup-node 7, upload-artifact 7, download-artifact 8) were not applied. They are pinned by commit SHA and can only be tested by a CI run; Dependabot's pull requests are the way to take them once CI on `build-v1` is green.
+
+### LM-056 · P1 · Print · Fixed
+**Where:** `src/renderer/label/LabelSurface.tsx` (`useImperativeHandle(ref, …, [])`).
+**Problem:** The label's measuring handle was created once, when the component first mounted. React reuses DOM elements by position, so when a different layout is shown (4 × 6 portrait, 4 × 6 landscape in print mode, 2 × 1) the text box becomes a new element, or the old one becomes the safe-area wrapper. In the hidden print window, if the first label ever shown was 4 × 6 landscape, the handle pointed at an element that was removed afterwards. Every later label was measured as an empty, detached element: overflow `false`, one line. The `overflow_clipped` question (spec A12) is decided from that report, so a clipped label printed without asking until the app was restarted. If the first label was portrait, landscape was measured on the wrong element (the wrapper), which gave the right overflow answer by luck but one line only. The editor's own measuring copy had the same flaw, hidden because the app always starts on portrait.
+**Fix:** The handle is refreshed on every render, so it always points at the real text element.
+**Verified:** UI test sends landscape first, then portrait and 2 × 1 labels, and checks overflow and line count each time (fails on the old code: `Expected: true, Received: false`); the same check against the real hidden window in Electron (also fails on the old code); the parity test below fails on the old code with `measured 1 lines for 30 typed`.
+
+### LM-057 · P2 · Print · Fixed (not reproduced in isolation)
+**Where:** `src/renderer/print/PrintDocument.tsx`.
+**Problem:** The print page measured the label from the job callback: it set the new label, waited for the font and one frame, then measured whatever element was there. If React had not yet drawn the new label, the report described the label shown before. In the parity run this happened in 7 of 405 cases, always a one-line label followed by a big one (the report repeated the previous label's line count).
+**Fix:** Measurement now runs in an effect that depends on the job, so it starts only after the page shows that job, and a newer job cancels it.
+**Limit:** An isolated test that alternates one-line and 100-line labels did not reproduce the stale report with the old code (it appeared only with two pages taking turns in front), so no test guards this part on its own.
+
+### LM-058 · P2 · Print · Fixed
+**Where:** `printService.ts`, `layout.ts` (`compareFingerprints` now says what differs), `App.tsx`, `contracts.ts`.
+**Problem:** When the print window wrapped the text differently from the preview, the label printed anyway and only a log line recorded it. The preview is the promise of this app.
+**Fix:** A different line count, different line starts or a different overflow answer adds the confirmation `layout_differs` (asked first): "Label May Print Differently … Print it anyway?" with Print Anyway or Cancel. Cancel submits nothing. A small shift of a line box (rectangles beyond 0.05 pt) is only logged, so display scaling and sub-pixel differences cannot block printing, and a page of the wrong size still stops the print. This follows the spirit of spec §7 ("mismatch aborts") but lets the owner decide instead of blocking.
+**Verified:** 4 unit tests (wrap differs; overflow differs and the order of the questions; a 0.4 pt shift does not ask; wrong page size still refuses), UI test for the dialog (Cancel and Print Anyway). The parity test (2 fonts × 3 layouts × 2 sizes × alignments × 7 texts, 132 labels) proves that today the editor and the print window agree, so the question only appears when something really diverges.
+
+### LM-059 · P3 · Tests · Fixed (no defect found)
+**Where:** new `tests/ui/layoutStability.spec.ts`.
+**Check:** Spec A09 asks for the same wrapping at different window sizes and display scales. The same multi-line text (with a blank line and a very long word) is measured at 800 × 600, 1100 × 760, 1600 × 900 and at 150 % and 200 % scale for each of 4 × 6 portrait, 4 × 6 landscape and 2 × 1: the line starts, the overflow answer and every line box agree within 0.05 pt in all 15 combinations.
+**Not covered:** the real hidden print window at a non-100 % Windows display scale; the Electron suite runs at the machine's own scale.
+
+### LM-060 · P2 · Accessibility · Fixed
+**Where:** `LabelEditor.tsx` `handleKeyDown`.
+**Problem:** Tab and Shift+Tab were intercepted to insert four spaces. A keyboard user who reached the label could never move on to the toolbar or the Print button (WCAG 2.1.2 No Keyboard Trap; spec A19). A label has no use for tab stops, and typed or pasted tabs are turned into spaces anyway.
+**Fix:** The key handling is removed; Tab and Shift+Tab move focus as usual.
+**Verified:** UI test (fails on the old code: focus stays in the editor and nothing else changes).
+**Note for the owner:** the Tab key no longer indents text in the label.
+
+### LM-061 · P2 · Accessibility · Fixed
+**Where:** `Toolbar.tsx` (Size and Copies fields).
+**Problem:** Both text fields hid the browser's focus outline and had no replacement, so there was no visible sign that they had keyboard focus (WCAG 2.4.7).
+**Fix:** The box around each field gets a blue border and ring while it has focus.
+**Verified:** a test tabs through every control of the main window in both themes and through the Settings dialog and requires a visible outline or ring on each; it fails on the old toolbar for exactly these two fields.
+
+### LM-062 · P2 · Accessibility · Fixed
+**Where:** `Toolbar.tsx`, `SettingsDialog.tsx`.
+**Problem:** axe-core reported colour-contrast failures of 2.4:1 to 3.9:1: the grey "Stock:" label and the "pt" unit in the light theme, the "Size:", "Copies:" and help texts in the dark theme, and the blue text of the selected tab and orientation button in the dark theme. Separately, hovering the font button in the dark theme turned it near-white while its text stayed light (1.2:1, unreadable).
+**Fix:** Darker greys in the light theme, lighter greys (`dark:text-slate-400`) in the dark theme, `blue-300` for the selected buttons in the dark theme, and a dark hover colour for the font button.
+**Verified:** axe-core (new dev dependency `@axe-core/playwright`) now runs on the main window, the 2 × 1 profile, the open font list, the Settings dialog and a confirmation dialog in both themes: 10 tests, no violations at WCAG 2.1 A and AA.
+
+### LM-063 · P3 · Accessibility · Fixed
+**Where:** `SettingsDialog.tsx`.
+**Problem:** Each printer choice was a `<button>` with an `<input type="radio">` inside it: two tab stops and two announcements for one choice (axe: nested-interactive).
+**Fix:** Each row is one `role="radio"` button with `aria-checked`, inside a `role="radiogroup"` named "Printer for 4 × 6 labels" (or 2 × 1); the circle is drawn, not a control.
+**Verified:** the axe test above, and the existing printer-selection UI tests (updated to find the rows as radio buttons).
+
+### LM-064 · P3 · Repo · Fixed
+**Where:** `package.json`.
+**Problem:** electron-builder printed "author is missed in the package.json" on every build, and the installer metadata had no publisher name.
+**Fix:** `author` is `dwyerwilliam` (the name in LICENSE) and `license` is `MIT`.
+**Verified:** the packager no longer warns.
+
 ## Run log
 
 - 2026-11-17 01:44 EST — file created from the first code review plus the zod upgrade work.
@@ -356,3 +448,9 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 - 2026-11-17 02:22 EST — LM-015 to LM-018, LM-034, LM-042: CI workflow, Dependabot, .gitattributes, real packaged smoke test, README, tests included in typecheck.
 - 2026-11-17 02:33 EST — LM-043 to LM-048: print-page handshake (intermittent lost job), toolbar accessibility, stricter CSP, print-document PDF tests, second-instance test.
 - 2026-11-17 07:47 EST — LM-049 to LM-052: ESLint added (87 findings fixed), splash failsafe, typed helper output, startup failure handling. Full suite green: 123 unit, 12 Electron, 44 UI, packaged smoke.
+- 2026-11-17 09:08 EST — Owner tested both real printers (SP410, SP310) from `build-v1` at 6b09da4: "looks good". Pushed to origin earlier; CI run 44087775714 not yet checked.
+- 2026-11-17 09:17 EST — Owner confirmed both printers print correctly and decided: fixed stock per printer (4 × 6 and 2.25 × 1.25), no paper selection, stale branches may go, audit flags and version bumps wanted. First CI run (44087775714) had failed: LM-053 and LM-054 found and fixed. LM-018 (branches), LM-020 (closed by decision) and LM-024 (0 vulnerabilities) done.
+- 2026-11-17 09:25 EST — LM-055: Vite 8, Tailwind 4 and Node 26/24 baseline done and verified (0 audit findings). Visual baseline compared before and after Tailwind 4.
+- 2026-11-17 10:08 EST — LM-056 to LM-059: a layout-parity experiment (405 labels) found that the print window measured the wrong element after a landscape-first session (clipped-label question skipped) and sometimes measured before the new label was drawn. Fixed; the spec's preview/print mismatch check is back as a question to the user (LM-003 closed). New tests: layout parity, print document, resize and display scale, overflow indicator, real-Electron overflow report.
+- 2026-11-17 10:10 EST — LM-027 fixed (measurement capped at 6,000 characters; 36,000 characters 340 ms to 46 ms).
+- 2026-11-17 10:16 EST — LM-060 to LM-063 from keyboard and axe-core checks: Tab trap in the editor, no focus ring on Size/Copies, contrast failures in both themes (and an unreadable hovered font button in the dark theme), nested radio-in-button. Fixed with permanent tests.

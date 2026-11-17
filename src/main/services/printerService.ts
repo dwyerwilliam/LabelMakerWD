@@ -26,6 +26,13 @@ interface PrinterRecord {
   driverName?: string;
   portName?: string;
   model?: string;
+  /** Raw CUPS options Electron reports on macOS and Linux; `device-uri` says how the queue is connected. */
+  options?: object;
+}
+
+function deviceUriOf(options: object | undefined): string {
+  const uri = (options as Record<string, unknown> | undefined)?.['device-uri'];
+  return typeof uri === 'string' ? uri : '';
 }
 
 interface InspectableCapabilities {
@@ -105,7 +112,8 @@ export class PrinterService {
 
       for (const p of printers) {
         const driverName = p.driverName || p.description || '';
-        const portName = p.portName || '';
+        // Windows reports a port name. On macOS the CUPS device URI plays that part.
+        const portName = p.portName || deviceUriOf(p.options);
         const model = p.model || '';
         const profile = identifyPrinterProfile(p.name, driverName, model);
         const detectedTransport = detectTransport(portName, p.name);

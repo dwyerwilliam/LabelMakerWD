@@ -38,9 +38,27 @@ export function isSp310Eligible(name: string, driver = '', model = ''): boolean 
   return identifyPrinterProfile(name, driver, model) === '2x1';
 }
 
+/** Connection type for the scheme of a CUPS device URI (macOS), or null when it is not one we know. */
+function transportFromUriScheme(uri: string): TransportType | null {
+  const scheme = /^([a-z][a-z0-9+.-]*):\/\//.exec(uri)?.[1];
+  if (!scheme) return null;
+  if (scheme === 'usb') return 'usb';
+  if (scheme === 'bluetooth' || scheme === 'bt' || scheme === 'btspp') return 'bluetooth';
+  if (/^(ipps?|ipp14|http|https|socket|lpd|dnssd|mdns|smb|ncp)$/.test(scheme)) return 'network';
+  return null;
+}
+
+/**
+ * Works out how a queue is connected from its port name (Windows: USB001, IP_10.0.0.9,
+ * WSD-…) or its device URI (macOS CUPS: usb://…, ipp://…, socket://…).
+ */
 export function detectTransport(portName = '', deviceName = ''): TransportType {
   const normPort = portName.toLowerCase();
   const normName = deviceName.toLowerCase();
+
+  // A URI states the connection outright; the host name inside it ("usb-hub.local") must not be mistaken for a port type.
+  const fromUri = transportFromUriScheme(normPort);
+  if (fromUri) return fromUri;
 
   if (normPort.includes('usb') || normName.includes('usb')) {
     return 'usb';

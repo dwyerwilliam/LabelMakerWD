@@ -4,11 +4,11 @@ import path from 'path';
 export default defineConfig({
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'),
-      '@main': path.resolve(__dirname, 'src/main'),
-      '@preload': path.resolve(__dirname, 'src/preload'),
-      '@renderer': path.resolve(__dirname, 'src/renderer'),
-      '@shared': path.resolve(__dirname, 'src/shared'),
+      '@': path.resolve(import.meta.dirname, 'src'),
+      '@main': path.resolve(import.meta.dirname, 'src/main'),
+      '@preload': path.resolve(import.meta.dirname, 'src/preload'),
+      '@renderer': path.resolve(import.meta.dirname, 'src/renderer'),
+      '@shared': path.resolve(import.meta.dirname, 'src/shared'),
     },
   },
   test: {

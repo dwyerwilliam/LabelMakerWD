@@ -175,3 +175,58 @@ test('the 4 × 6 landscape label is turned a quarter turn clockwise, once', asyn
     await app.close().catch(() => undefined);
   }
 });
+
+test('the print window reports overflow for the label it was given, whichever layout it showed first', async () => {
+  // What the print window reports decides whether the user is asked about a clipped label.
+  // The first label it ever shows used to decide which element later reports were taken from,
+  // so after a 4 × 6 landscape label every report said "fits".
+  const { app } = await launchApp(userDataDir);
+  try {
+    const tall = Array.from({ length: 20 }, (_, i) => `Line ${i + 1}`).join('\n');
+    const cases: Array<[string, Snapshot, boolean]> = [
+      ['4 × 6 landscape, tall', { text: tall, profile: '4x6', orientation: 'landscape', fontSizePt: 24 }, true],
+      ['4 × 6 portrait, tall', { text: tall, profile: '4x6', orientation: 'portrait', fontSizePt: 24 }, true],
+      ['2 × 1, tall', { text: tall, profile: '2x1', orientation: 'landscape', fontSizePt: 24 }, true],
+      ['4 × 6 portrait, short', { text: 'Hello', profile: '4x6', orientation: 'portrait', fontSizePt: 24 }, false],
+      ['4 × 6 landscape, tall again', { text: tall, profile: '4x6', orientation: 'landscape', fontSizePt: 24 }, true],
+    ];
+
+    let n = 0;
+    for (const [name, snapshot, overflow] of cases) {
+      n += 1;
+      const job = {
+        requestId: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
+        draftRevision: n,
+        resolvedFontFamily: 'Arial',
+        alignment: 'left',
+        copies: 1,
+        expectedLayout: { logicalWidthPt: 0, logicalHeightPt: 0, lineRectsPt: [], lineTextOffsets: [], overflow: false },
+        ...snapshot,
+      };
+
+      const reported = await app.evaluate(
+        async ({ BrowserWindow, ipcMain }, { jobChannel, readyChannel, job }) => {
+          const printWindow = BrowserWindow.getAllWindows().find((win) => win.webContents.getURL().includes('print.html'))!;
+          return await new Promise<{ overflow: boolean; lines: number }>((resolve) => {
+            const onReady = (_event: unknown, payload: { requestId: string; fingerprint: { overflow: boolean; lineTextOffsets: number[] } }) => {
+              if (payload.requestId !== job.requestId) return;
+              ipcMain.removeListener(readyChannel, onReady);
+              clearInterval(resend);
+              resolve({ overflow: payload.fingerprint.overflow, lines: payload.fingerprint.lineTextOffsets.length });
+            };
+            ipcMain.on(readyChannel, onReady);
+            // The print page may still be starting; the job is sent again until it answers.
+            const resend = setInterval(() => printWindow.webContents.send(jobChannel, job), 400);
+            printWindow.webContents.send(jobChannel, job);
+          });
+        },
+        { jobChannel: IPC_CHANNELS.PRINT_WINDOW_JOB, readyChannel: IPC_CHANNELS.PRINT_WINDOW_READY, job }
+      );
+
+      expect(reported.overflow, `${name}: overflow`).toBe(overflow);
+      expect(reported.lines, `${name}: lines`).toBe(snapshot.text === 'Hello' ? 1 : 20);
+    }
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
