@@ -215,6 +215,30 @@ export async function suggestCropForPdf(
   };
 }
 
+/** The image counterpart of suggestCropForPdf: the snip with its outer borders trimmed. */
+export function suggestCropForImage(source: Extract<LoadedSource, { kind: 'image' }>): CropSuggestion {
+  const r = peelUniformBorders(bitmapToGray(source.bitmap));
+  return {
+    choice: {
+      pageIndex: 0,
+      crop: pxRectToFrac(r, source.width, source.height),
+      // Snips keep the clockwise default until it is known how they are usually taken.
+      rotation: chooseRotation(r.width, r.height, null, 90),
+    },
+    status: null,
+  };
+}
+
+/** The whole page (or image), turned the way its text says (PDF) or by its shape. */
+export async function wholePageChoice(source: LoadedSource, pageIndex: number): Promise<CropChoice> {
+  const crop = { x: 0, y: 0, width: 1, height: 1 };
+  if (source.kind === 'image') {
+    return { pageIndex: 0, crop, rotation: chooseRotation(source.width, source.height, null, 90) };
+  }
+  const size = await source.pdf.pageSizePt(pageIndex);
+  return { pageIndex, crop, rotation: chooseRotation(size.width, size.height, await source.pdf.textUprightRotation(pageIndex, crop)) };
+}
+
 export const useShippingStore = create<ShippingState>((set, get) => {
   /** Makes `source` + `choice` + `processed` the current label and releases what they replace. */
   const commit = (source: LoadedSource, choice: CropChoice, processed: ProcessedShippingImage) => {
@@ -289,13 +313,7 @@ export const useShippingStore = create<ShippingState>((set, get) => {
           created = { kind: 'image', ...loaded, origin, fileName };
           if (stale()) return discardIfUnused(created);
 
-          const r = peelUniformBorders(bitmapToGray(loaded.bitmap));
-          const choice: CropChoice = {
-            pageIndex: 0,
-            crop: pxRectToFrac(r, loaded.width, loaded.height),
-            // Snips keep the clockwise default until it is known how they are usually taken.
-            rotation: chooseRotation(r.width, r.height, null, 90),
-          };
+          const { choice } = suggestCropForImage(created);
           ensureShippingMode();
           await process(created, choice);
           return discardIfUnused(created);

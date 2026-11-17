@@ -177,7 +177,10 @@ export function useShippingInput(): { actions: ShippingInputActions; fileInput: 
       tabIndex={-1}
       data-testid="shipping-file-input"
       onChange={(e) => {
-        const file = e.currentTarget.files?.[0];
+        const input = e.currentTarget;
+        const file = input.files?.[0];
+        // Cleared at once, so choosing the same file again still counts as a change.
+        input.value = '';
         if (file) void useShippingStore.getState().loadBlob(file, file.name, 'file');
       }}
     />
