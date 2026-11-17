@@ -37,7 +37,7 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 | LM-024 | P3 | Deps | `npm audit`: vitest/tinypool (critical) and electron-builder/minimatch (moderate), both dev tooling | Fixed |
 | LM-025 | P0 | Editor | A blank line shows once in the editor but prints twice (WYSIWYG break) | Fixed |
 | LM-026 | P2 | Security | Pasted HTML is parsed with innerHTML on the live document | Fixed |
-| LM-027 | P3 | Performance | Layout measurement reads every character, so a very large label makes each keystroke slow | Open |
+| LM-027 | P3 | Performance | Layout measurement reads every character, so a very large label makes each keystroke slow | Fixed |
 | LM-028 | P1 | Print | Ctrl+P / Cmd+P ignored the toolbar's disabled state (no printer, invalid fields) | Fixed |
 | LM-029 | P1 | Print | When clipping and an unavailable printer both apply, only the first question was asked | Fixed |
 | LM-030 | P1 | Print | A stale status timer from an earlier print cleared the busy state of a newer print | Fixed |
@@ -217,10 +217,12 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Fix:** Parse with `DOMParser` into an inert document, then serialize.
 **Verified:** UI test pastes `<img src=x onerror=…>` and checks that nothing ran and no markup entered the label.
 
-### LM-027 · P3 · Performance · Open
+### LM-027 · P3 · Performance · Fixed
 **Where:** `src/renderer/label/layout.ts` `measureLayoutFingerprint`.
-**Problem:** Every text change measures every character with its own `Range.getBoundingClientRect()`. About 5,000 characters take ~36 ms per keystroke; 36,000 characters take ~300 ms, so pasting a huge block makes typing sluggish. A real label never holds that much, so this is low priority.
-**Proposed fix:** Measure line boxes with `getClientRects()` per text node, or only measure while a print is being prepared.
+**Problem:** Every text change measured every character with its own `Range.getBoundingClientRect()`. About 6,000 characters took ~45 ms; 36,000 characters took ~340 ms (filling the editor until Print was enabled), so pasting a huge block made typing sluggish.
+**Fix:** Past `MAX_MEASURED_CHARACTERS` (6,000) the per-character pass is skipped and only the overflow height is read. A label holds well under 6,000 characters even at 6 pt, so such a text is always clipped, and the editor and the print window use the same function so they still agree. The line list for those labels is the single-line fallback.
+**Measured:** 36,000 characters now settle in ~46 ms, the same as 1,000.
+**Verified:** UI test (just under the limit still measures every line; far over it reports one reading, overflow true, and Print still works); it fails without the cap.
 
 ### LM-028 · P1 · Print · Fixed
 **Where:** `App.tsx` `handlePrintClick`.
@@ -414,3 +416,4 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 - 2026-11-17 09:17 EST — Owner confirmed both printers print correctly and decided: fixed stock per printer (4 × 6 and 2.25 × 1.25), no paper selection, stale branches may go, audit flags and version bumps wanted. First CI run (44087775714) had failed: LM-053 and LM-054 found and fixed. LM-018 (branches), LM-020 (closed by decision) and LM-024 (0 vulnerabilities) done.
 - 2026-11-17 09:25 EST — LM-055: Vite 8, Tailwind 4 and Node 26/24 baseline done and verified (0 audit findings). Visual baseline compared before and after Tailwind 4.
 - 2026-11-17 10:08 EST — LM-056 to LM-059: a layout-parity experiment (405 labels) found that the print window measured the wrong element after a landscape-first session (clipped-label question skipped) and sometimes measured before the new label was drawn. Fixed; the spec's preview/print mismatch check is back as a question to the user (LM-003 closed). New tests: layout parity, print document, resize and display scale, overflow indicator, real-Electron overflow report.
+- 2026-11-17 10:10 EST — LM-027 fixed (measurement capped at 6,000 characters; 36,000 characters 340 ms to 46 ms).

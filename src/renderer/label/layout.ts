@@ -3,6 +3,15 @@ import { getPageDimensions } from './geometry';
 
 const PT_PER_PX = 72 / 96; // 0.75
 
+/**
+ * Lines are found by measuring every character, which costs about 8 microseconds each (about
+ * 45 ms for 6,000 characters, 340 ms for 36,000). Even at 6 pt a label holds well under 6,000
+ * characters, so a longer text is certainly clipped. For those only the overflow answer (one
+ * height reading) is taken and the line list is left as the single-line fallback. The editor and
+ * the print window use this same function, so they still agree with each other.
+ */
+export const MAX_MEASURED_CHARACTERS = 6000;
+
 function getAncestorVisualScale(element: HTMLElement): number {
   let scale = 1;
   let ancestor = element.parentElement;
@@ -93,7 +102,7 @@ export function measureLayoutFingerprint(
     };
   };
 
-  if (textNode && textNode.nodeType === Node.TEXT_NODE && textNode.textContent) {
+  if (textNode && textNode.nodeType === Node.TEXT_NODE && textNode.textContent && textNode.textContent.length <= MAX_MEASURED_CHARACTERS) {
     const text = textNode.textContent;
     let currentLineCoordinate = -99999;
     let currentLineStart = 0;
