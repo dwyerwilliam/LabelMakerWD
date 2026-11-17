@@ -1,8 +1,6 @@
 # Label Maker
 
-<p align="center">
-  <img src="public/labelmaker-icon.png" alt="Label Maker icon" width="180">
-</p>
+<img align="right" src="public/labelmaker-icon.png" alt="Label Maker icon" width="144">
 
 [![Build installers and release](https://github.com/dwyerwilliam/LabelMakerWD/actions/workflows/build-release.yml/badge.svg)](https://github.com/dwyerwilliam/LabelMakerWD/actions/workflows/build-release.yml)
 [![Latest release](https://img.shields.io/github/v/release/dwyerwilliam/LabelMakerWD?label=latest)](https://github.com/dwyerwilliam/LabelMakerWD/releases/latest)
@@ -11,6 +9,8 @@
 A single-window desktop application for editing and direct thermal printing of 4 × 6 labels to the **iDPRT SP410** family and fixed-landscape 2 × 1 labels to the **iDPRT SP310** using DYMO 30334 stock over USB.
 
 Based on [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md) and [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md).
+
+<br clear="right">
 
 ## Platform and label support
 
