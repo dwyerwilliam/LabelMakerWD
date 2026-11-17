@@ -331,6 +331,30 @@ test('the newest load wins when two overlap', async ({ page }) => {
   expect(s.choice!.rotation).toBe(0);
 });
 
+test('an oversized second file releases the busy state and keeps the previous printable label', async ({ page }) => {
+  await loadFixture(page, 'label-4x6.pdf');
+  const before = await state(page);
+  await page.evaluate(async (bytes) => {
+    const { store } = (window as any).__ship;
+    const slow = new File([new Uint8Array(bytes)], 'slow.pdf', { type: 'application/pdf' });
+    const read = slow.arrayBuffer.bind(slow);
+    let resume!: () => void;
+    const gate = new Promise<void>((resolve) => { resume = resolve; });
+    slow.arrayBuffer = async () => { await gate; return read(); };
+    const pending = store.getState().loadBlob(slow, slow.name, 'file');
+    const oversized = new Blob([new Uint8Array(25 * 1024 * 1024 + 1)], { type: 'application/pdf' });
+    await store.getState().loadBlob(oversized, 'oversized.pdf', 'file');
+    resume();
+    await pending;
+  }, fixture('label-6x4.pdf'));
+
+  const after = await state(page);
+  expect(after.busy).toBeNull();
+  expect(after.shippingMessage.text).toContain('over 25 MB');
+  expect(after.processed).toEqual(before.processed);
+  await expect(page.getByRole('button', { name: /^Print 4 × 6/ })).toBeEnabled();
+});
+
 for (const [name, rotation] of [
   ['sideways-down-letter.pdf', 270], // eBay layout: text reads downward, label top toward the page's right
   ['sideways-up-letter.pdf', 90], //    the opposite: proves the turn follows the text, not the default

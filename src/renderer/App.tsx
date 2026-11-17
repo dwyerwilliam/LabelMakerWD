@@ -16,7 +16,7 @@ import { useUIStore } from './stores/uiStore';
 import { useFontStore } from './stores/fontStore';
 import { resolveFontFamily } from './fonts/fontCatalog';
 import { usePrintBlockers } from './hooks/usePrintBlockers';
-import type { ConfirmationReason, PrintPrepareResult, PrintSnapshot } from '@shared/contracts';
+import type { ConfirmationReason, PrintSnapshot } from '@shared/contracts';
 import { describeIpcError } from './ipcError';
 import { queueIdentityFingerprint } from '@shared/printerSelection';
 
@@ -66,7 +66,7 @@ export const App: React.FC = () => {
     setResolvedFont(resolved);
   }, [fontStatus, fontList, fontSource, draft.preferredFontFamily, draft.profile, setResolvedFont]);
 
-  const [pendingPrepareResult, setPendingPrepareResult] = useState<PrintPrepareResult | null>(null);
+  const [pendingPrint, setPendingPrint] = useState<{ token: string; requestId: string } | null>(null);
   // Confirmations still to ask after the one on screen (for example clipped text
   // on a printer that is offline: both must be agreed to, one after the other).
   const [pendingConfirmations, setPendingConfirmations] = useState<ConfirmationReason[]>([]);
@@ -156,7 +156,7 @@ export const App: React.FC = () => {
             settingsProblem.kind === 'repaired'
               ? `Some saved settings were not valid and were reset to their defaults (${(settingsProblem.fields ?? []).join(', ')}).${copy}`
               : settingsProblem.kind === 'newer'
-                ? `Your settings were saved by a newer version of Label Maker, so defaults are being used.${copy}`
+                ? 'Your settings were saved by a newer version of Label Maker. Changes apply only to this session. Choose Restore Factory Defaults to replace the file and save changes again.'
                 : `Your saved settings could not be read, so defaults are being used.${copy}`
           );
         }
@@ -268,9 +268,8 @@ export const App: React.FC = () => {
     try {
       setPrintBusy(true, 'Preparing label…');
       const prepareRes = await window.api.print.prepare(snapshot);
-      setPendingPrepareResult(prepareRes);
-
       if (prepareRes.requiresConfirmation && prepareRes.confirmationReasons.length > 0) {
+        if (prepareRes.token) setPendingPrint({ token: prepareRes.token, requestId: snapshot.requestId });
         setPrintBusy(false);
         askNextConfirmation(prepareRes.confirmationReasons);
         return;
@@ -308,18 +307,19 @@ export const App: React.FC = () => {
       askNextConfirmation(pendingConfirmations);
       return;
     }
-    if (pendingPrepareResult?.token) {
-      await executeConfirmedPrint(pendingPrepareResult.token, pendingPrepareResult.snapshot.requestId);
+    if (pendingPrint) {
+      setPendingPrint(null);
+      await executeConfirmedPrint(pendingPrint.token, pendingPrint.requestId);
     }
   };
 
   const handleCancelPrepare = async () => {
     closeDialog();
     setPendingConfirmations([]);
-    if (pendingPrepareResult?.token && window.api) {
-      await window.api.print.cancel(pendingPrepareResult.token);
+    if (pendingPrint && window.api) {
+      await window.api.print.cancel(pendingPrint.token);
     }
-    setPendingPrepareResult(null);
+    setPendingPrint(null);
   };
 
   const handleAcknowledgeUncertain = () => {
@@ -340,9 +340,10 @@ export const App: React.FC = () => {
       const reset = await window.api.preferences.reset();
       resetPrefs(reset);
       hydratePreferences(reset, true);
+      setNotice(null);
       await handleScanPrinters();
     } catch (err) {
-      console.error('Failed restoring defaults:', err);
+      setNotice(describeIpcError(err, 'Could not restore factory defaults.'));
     }
   };
 

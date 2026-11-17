@@ -19,9 +19,10 @@ import type { PrinterService } from './printerService';
 interface ActivePreparation {
   token: string;
   requestId: string;
-  snapshot: PrintSnapshot;
-  confirmationReasons: ConfirmationReason[];
+  profile: PrinterProfile;
+  copies: number;
   expiresAt: number;
+  expiryTimer: ReturnType<typeof setTimeout>;
 }
 
 export interface PrintServiceOptions {
@@ -46,6 +47,10 @@ function createGate() {
   return { promise, open };
 }
 
+function clearPrintDocument(win: BrowserWindow | null): void {
+  if (win && !win.isDestroyed()) win.webContents.send(IPC_CHANNELS.PRINT_WINDOW_JOB, null);
+}
+
 export class PrintService {
   private printerService: PrinterService;
   private mainWindow: BrowserWindow | null = null;
@@ -59,14 +64,10 @@ export class PrintService {
   private isPreparing = false;
   /** Opens once the hidden print page has loaded and is listening; closed again whenever it reloads. */
   private printWindowGate = createGate();
-  /** The request whose label is currently laid out in the print window; only that one may be printed. */
-  private loadedRequestId: string | null = null;
-  private activePreparations = new Map<string, ActivePreparation>();
+  /** Only the hidden document needs the label content after measurement. */
+  private preparation: ActivePreparation | null = null;
   private requestStatuses = new Map<string, PrintStatusResult>();
-  private pendingReadyResolvers = new Map<
-    string,
-    { resolve: (fp: LayoutFingerprint) => void; reject: (err: Error) => void }
-  >();
+  private pendingReadyResolvers = new Map<string, (fp: LayoutFingerprint) => void>();
 
   constructor(printerService: PrinterService, options: PrintServiceOptions = {}) {
     this.printerService = printerService;
@@ -86,10 +87,10 @@ export class PrintService {
 
     // A new or reloaded print page has not registered its listener yet.
     this.printWindowGate = createGate();
-    this.loadedRequestId = null;
+    this.forgetPreparation();
     printWin.webContents?.on?.('did-start-loading', () => {
       this.printWindowGate = createGate();
-      this.loadedRequestId = null;
+      this.forgetPreparation();
     });
   }
 
@@ -113,11 +114,7 @@ export class PrintService {
   }
 
   handlePrintWindowReady(requestId: string, fingerprint: LayoutFingerprint): void {
-    const pending = this.pendingReadyResolvers.get(requestId);
-    if (pending) {
-      pending.resolve(fingerprint);
-      this.pendingReadyResolvers.delete(requestId);
-    }
+    this.pendingReadyResolvers.get(requestId)?.(fingerprint);
   }
 
   async prepare(snapshot: PrintSnapshot): Promise<PrintPrepareResult> {
@@ -146,18 +143,15 @@ export class PrintService {
       throw new Error('Print rendering engine is unavailable.');
     }
 
-    this.pruneExpiredPreparations();
-
-    // The print window holds one label at a time. From here until the layout
-    // is measured it does not hold any label that may be printed.
-    this.loadedRequestId = null;
+    if (this.preparation) this.cancel(this.preparation.token);
     this.isPreparing = true;
     let measuredFingerprint: LayoutFingerprint;
+    const printWindow = this.printWindow;
     try {
       // A job sent before the print page is listening would be lost.
       await this.waitForPrintWindow();
       // Send snapshot to hidden print renderer and await layout measurement
-      measuredFingerprint = await this.awaitHiddenWindowLayout(snapshot);
+      measuredFingerprint = await this.awaitHiddenWindowLayout(snapshot, printWindow);
     } finally {
       this.isPreparing = false;
     }
@@ -169,6 +163,7 @@ export class PrintService {
       Math.abs(snapshot.expectedLayout.logicalHeightPt - measuredFingerprint.logicalHeightPt) <= 0.05;
 
     if (!pageDimensionsMatch) {
+      clearPrintDocument(printWindow);
       throw new Error(`Print page dimensions mismatch: ${comparison.reason}`);
     }
 
@@ -200,15 +195,15 @@ export class PrintService {
       confirmationReasons.push('printer_unavailable');
     }
 
-    this.loadedRequestId = snapshot.requestId;
     const token = crypto.randomBytes(24).toString('hex');
-    this.activePreparations.set(token, {
+    this.preparation = {
       token,
       requestId: snapshot.requestId,
-      snapshot,
-      confirmationReasons,
+      profile: snapshot.profile,
+      copies: snapshot.copies,
       expiresAt: Date.now() + this.tokenTtlMs,
-    });
+      expiryTimer: setTimeout(() => this.cancel(token), this.tokenTtlMs),
+    };
 
     return {
       token,
@@ -219,48 +214,42 @@ export class PrintService {
     };
   }
 
-  private awaitHiddenWindowLayout(snapshot: PrintSnapshot): Promise<LayoutFingerprint> {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pendingReadyResolvers.delete(snapshot.requestId);
-        reject(new Error(`Print layout preparation timed out after ${Math.round(this.preparationTimeoutMs / 1000)} seconds.`));
-      }, this.preparationTimeoutMs);
-
-      this.pendingReadyResolvers.set(snapshot.requestId, {
-        resolve: (fp) => {
-          clearTimeout(timeout);
-          resolve(fp);
-        },
-        reject: (e) => {
-          clearTimeout(timeout);
-          reject(e);
-        },
+  private async awaitHiddenWindowLayout(snapshot: PrintSnapshot, printWindow: BrowserWindow): Promise<LayoutFingerprint> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await new Promise<LayoutFingerprint>((resolve, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`Print layout preparation timed out after ${Math.round(this.preparationTimeoutMs / 1000)} seconds.`));
+        }, this.preparationTimeoutMs);
+        this.pendingReadyResolvers.set(snapshot.requestId, resolve);
+        printWindow.webContents.send(IPC_CHANNELS.PRINT_WINDOW_JOB, snapshot);
       });
-
-      this.printWindow?.webContents.send(IPC_CHANNELS.PRINT_WINDOW_JOB, snapshot);
-    });
+    } catch (error) {
+      clearPrintDocument(printWindow);
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      this.pendingReadyResolvers.delete(snapshot.requestId);
+    }
   }
 
   async confirm(token: string, requestId: string): Promise<Result<void>> {
-    this.pruneExpiredPreparations();
-
-    const prep = this.activePreparations.get(token);
-    if (!prep || prep.requestId !== requestId) {
+    const prep = this.preparation;
+    if (!prep || prep.token !== token || prep.requestId !== requestId) {
+      return err('PRINT_PREPARATION_FAILED', 'Preparation token expired or invalid.');
+    }
+    if (Date.now() >= prep.expiresAt) {
+      this.cancel(token);
       return err('PRINT_PREPARATION_FAILED', 'Preparation token expired or invalid.');
     }
 
-    // The print window shows exactly one label. If a newer label was prepared
-    // since, printing now would send that one instead of the one confirmed.
-    if (this.loadedRequestId !== prep.requestId) {
-      this.activePreparations.delete(token);
-      return err('PRINT_PREPARATION_FAILED', 'The label changed after it was prepared. Print it again.');
-    }
-
-    const selectedQueue = this.printerService.getSelectedQueue(prep.snapshot.profile);
+    const selectedQueue = this.printerService.getSelectedQueue(prep.profile);
     if (!selectedQueue) {
+      this.cancel(token);
       return err('PRINTER_NOT_FOUND', 'Selected printer is no longer available.');
     }
-    if (selectedQueue.profile !== prep.snapshot.profile) {
+    if (selectedQueue.profile !== prep.profile) {
+      this.cancel(token);
       return err('PRINTER_NOT_FOUND', 'Selected printer no longer matches this label profile.');
     }
 
@@ -270,13 +259,17 @@ export class PrintService {
 
     const printWindow = this.printWindow;
     if (!printWindow || printWindow.isDestroyed()) {
+      this.cancel(token);
       return err('PRINT_PREPARATION_FAILED', 'Print rendering engine is unavailable.');
     }
 
+    // The spooler now owns this submission. A cancel or expiry must not erase
+    // the page while Electron is using it.
+    this.forgetPreparation();
     this.isSubmitting = true;
     this.notifyState(requestId, 'submitting', `Sending to ${selectedQueue.displayName}…`);
 
-    const pageSize = getPrintPageSize(prep.snapshot.profile);
+    const pageSize = getPrintPageSize(prep.profile);
     const printOptions: Electron.WebContentsPrintOptions = {
       silent: true,
       deviceName: selectedQueue.deviceName,
@@ -285,7 +278,7 @@ export class PrintService {
       margins: { marginType: 'none' },
       scaleFactor: 100,
       color: false,
-      copies: prep.snapshot.copies,
+      copies: prep.copies,
       pagesPerSheet: 1,
       duplexMode: 'simplex',
       header: '',
@@ -301,7 +294,7 @@ export class PrintService {
       const watchdog = setTimeout(() => {
         timedOut = true;
         this.isSubmitting = false;
-        this.activePreparations.delete(token);
+        clearPrintDocument(printWindow);
         const detail =
           `The outcome for ${selectedQueue.displayName} is unconfirmed. ` +
           'Check the printer queue before printing again, or a duplicate label may print.';
@@ -313,11 +306,11 @@ export class PrintService {
         clearTimeout(watchdog);
         if (!timedOut) {
           this.isSubmitting = false;
-          this.activePreparations.delete(token);
+          clearPrintDocument(printWindow);
         }
 
         if (success) {
-          const detail = `Sent to ${selectedQueue.displayName} — ${prep.snapshot.copies} label(s).`;
+          const detail = `Sent to ${selectedQueue.displayName} — ${prep.copies} label(s).`;
           this.notifyState(requestId, 'submitted', detail);
           if (!timedOut) resolve(ok(undefined));
         } else {
@@ -336,19 +329,18 @@ export class PrintService {
   }
 
   cancel(token: string): void {
-    this.activePreparations.delete(token);
+    if (this.preparation?.token !== token) return;
+    this.forgetPreparation();
+    clearPrintDocument(this.printWindow);
   }
 
   getStatus(requestId: string): PrintStatusResult {
     return this.requestStatuses.get(requestId) || { requestId, state: 'idle' };
   }
 
-  /** Drops preparations nobody confirmed in time, so they cannot pile up. */
-  private pruneExpiredPreparations(): void {
-    const now = Date.now();
-    for (const [token, prep] of this.activePreparations) {
-      if (now > prep.expiresAt) this.activePreparations.delete(token);
-    }
+  private forgetPreparation(): void {
+    if (this.preparation) clearTimeout(this.preparation.expiryTimer);
+    this.preparation = null;
   }
 
   private notifyState(requestId: string, state: PrintState, detail?: string): void {

@@ -155,8 +155,16 @@ export class SettingsService {
   }
 
   reset(): Promise<PreferencesV2> {
-    this.currentPreferences = createDefaultPreferences();
-    return this.flush().then(() => this.getPreferences());
+    const previous = this.currentPreferences;
+    const defaults = createDefaultPreferences();
+    this.currentPreferences = defaults;
+    return this.queueWrite(true).then(
+      () => this.getPreferences(),
+      (error: unknown) => {
+        if (this.currentPreferences === defaults) this.currentPreferences = previous;
+        throw error;
+      }
+    );
   }
 
   /**
@@ -166,17 +174,26 @@ export class SettingsService {
    * Each caller sees the result of its own write.
    */
   flush(): Promise<void> {
-    const write = this.writePromise.catch(() => undefined).then(() => this.writeToDisk());
+    return this.queueWrite(false);
+  }
+
+  private queueWrite(reset: boolean): Promise<void> {
+    const preferences = this.currentPreferences;
+    const write = this.writePromise.catch(() => undefined).then(async () => {
+      if (this.loadProblem?.kind === 'newer' && !reset) return;
+      await this.writeToDisk(preferences);
+      if (reset) this.loadProblem = null;
+    });
     this.writePromise = write;
     return write;
   }
 
-  private async writeToDisk(): Promise<void> {
+  private async writeToDisk(preferences: PreferencesV2): Promise<void> {
     const dir = path.dirname(this.filePath);
     await fs.promises.mkdir(dir, { recursive: true });
 
     const tempFile = path.join(dir, `settings.json.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`);
-    const payload = JSON.stringify(this.currentPreferences, null, 2);
+    const payload = JSON.stringify(preferences, null, 2);
 
     try {
       await fs.promises.writeFile(tempFile, payload, 'utf-8');

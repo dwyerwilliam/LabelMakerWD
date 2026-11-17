@@ -251,7 +251,7 @@ export const useShippingStore = create<ShippingState>((set, get) => {
   };
 
   /** Renders and commits. Returns false when it failed or a newer render replaced it. */
-  const process = async (source: LoadedSource, choice: CropChoice): Promise<boolean> => {
+  const process = async (source: LoadedSource, choice: CropChoice, enterShippingMode = false): Promise<boolean> => {
     const seq = ++processSeq;
     set({ busy: 'processing' });
     try {
@@ -260,6 +260,7 @@ export const useShippingStore = create<ShippingState>((set, get) => {
         URL.revokeObjectURL(result.objectUrl);
         return false;
       }
+      if (enterShippingMode) ensureShippingMode();
       commit(source, choice, result);
       const ui = useUIStore.getState();
       if (result.blank) report('error', MESSAGES.blank);
@@ -288,14 +289,17 @@ export const useShippingStore = create<ShippingState>((set, get) => {
 
     loadBlob: async (blob, fileName, origin) => {
       const seq = ++loadSeq;
+      ++processSeq;
       const stale = () => seq !== loadSeq;
       useUIStore.getState().setShippingMessage(null);
       const name = fileName ?? 'The clipboard image';
 
-      if (blob.size > MAX_SOURCE_FILE_BYTES) return report('error', MESSAGES.tooLarge(name));
       let type = classifyFile(fileName ?? '', blob.type);
       if (!type && origin === 'clipboard' && blob.type.startsWith('image/')) type = 'image';
-      if (!type) return report('error', MESSAGES.unsupported(fileName ?? 'that file'));
+      if (blob.size > MAX_SOURCE_FILE_BYTES || !type) {
+        set({ busy: null });
+        return report('error', blob.size > MAX_SOURCE_FILE_BYTES ? MESSAGES.tooLarge(name) : MESSAGES.unsupported(fileName ?? 'that file'));
+      }
 
       set({ busy: 'reading' });
       let created: LoadedSource | null = null;
@@ -315,8 +319,7 @@ export const useShippingStore = create<ShippingState>((set, get) => {
           if (stale()) return discardIfUnused(created);
 
           const { choice } = suggestCropForImage(created);
-          ensureShippingMode();
-          await process(created, choice);
+          await process(created, choice, true);
           return discardIfUnused(created);
         }
 
@@ -338,14 +341,16 @@ export const useShippingStore = create<ShippingState>((set, get) => {
         if (stale()) return discardIfUnused(created);
 
         const size = await pdf.pageSizePt(0);
+        if (stale()) return discardIfUnused(created);
         if (isFourBySixPage(size)) {
-          ensureShippingMode();
           const whole = { x: 0, y: 0, width: 1, height: 1 };
+          const textRotation = await pdf.textUprightRotation(0, whole);
+          if (stale()) return discardIfUnused(created);
           await process(created, {
             pageIndex: 0,
             crop: whole,
-            rotation: chooseRotation(size.width, size.height, await pdf.textUprightRotation(0, whole)),
-          });
+            rotation: chooseRotation(size.width, size.height, textRotation),
+          }, true);
           return discardIfUnused(created);
         }
 

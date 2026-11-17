@@ -113,8 +113,9 @@ describe('SettingsService persistence', () => {
     expect(new SettingsService(file).getLoadProblem()).toBeNull();
   });
 
-  it('reports a file from a newer version without losing it', () => {
-    fs.writeFileSync(file, JSON.stringify({ schemaVersion: 3, anything: true }), 'utf-8');
+  it('keeps a future settings file byte-for-byte through edits and close until an explicit reset succeeds', async () => {
+    const original = JSON.stringify({ schemaVersion: 3, anything: true });
+    fs.writeFileSync(file, original, 'utf-8');
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const service = new SettingsService(file);
@@ -122,6 +123,22 @@ describe('SettingsService persistence', () => {
     const problem = service.getLoadProblem();
     expect(problem?.kind).toBe('newer');
     expect(fs.readFileSync(path.join(dir, problem!.backupFile!), 'utf-8')).toContain('"schemaVersion":3');
+    await service.update({ activeProfile: '2x1' });
+    expect(service.getPreferences().activeProfile).toBe('2x1');
+    await service.flush();
+    expect(fs.readFileSync(file, 'utf-8')).toBe(original);
+
+    vi.spyOn(fs.promises, 'rename').mockRejectedValueOnce(new Error('locked'));
+    await expect(service.reset()).rejects.toThrow('locked');
+    expect(service.getPreferences().activeProfile).toBe('2x1');
+    await service.flush();
+    expect(fs.readFileSync(file, 'utf-8')).toBe(original);
+
+    await service.reset();
+    expect(service.getLoadProblem()).toBeNull();
+    expect(JSON.parse(fs.readFileSync(file, 'utf-8'))).toEqual(createDefaultPreferences());
+    await service.update({ activeProfile: '2x1' });
+    expect(new SettingsService(file).getPreferences().activeProfile).toBe('2x1');
   });
 
   it('reports unreadable settings as corrupt, with the copy that was saved', () => {

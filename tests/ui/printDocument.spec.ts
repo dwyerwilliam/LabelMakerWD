@@ -65,4 +65,8 @@ test('a shipping label reports the fixed image layout, and text and image jobs c
   const box = await img.boundingBox();
   expect([box!.width, box!.height]).toEqual([384, 576]);
   expect(await img.evaluate((el: HTMLImageElement) => [el.naturalWidth, el.naturalHeight])).toEqual([812, 1218]);
+
+  await page.evaluate(() => (window as unknown as { __onJob: (job: null) => void }).__onJob(null));
+  await expect(img).toHaveCount(0);
+  expect(await sendJob(page, makeImageJob(png))).toEqual(imageLayout);
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import type { PrintSnapshot } from '@shared/contracts';
 import { LabelSurface } from '../label/LabelSurface';
 import { measureLayoutFingerprint } from '../label/layout';
@@ -7,28 +7,14 @@ import { getPageDimensions } from '../label/geometry';
 import { SP310_OUTPUT_HEIGHT_IN, SP310_OUTPUT_WIDTH_IN } from '@shared/defaults';
 import { IMAGE_LAYOUT_FINGERPRINT } from '@shared/shipping';
 
-export const PrintDocument: React.FC = () => {
-  const [snapshot, setSnapshot] = useState<PrintSnapshot | null>(null);
+export const PrintDocument: React.FC<{ snapshot: PrintSnapshot }> = ({ snapshot }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
-
-  useEffect(() => {
-    if (!window.printApi) return;
-
-    const unsubscribe = window.printApi.onJob(setSnapshot);
-
-    // Main waits for this before sending the first job; a job sent while the
-    // page was still loading would be lost.
-    window.printApi.reportListening();
-
-    return unsubscribe;
-  }, []);
 
   // Measure only after React has drawn THIS job's label. Measuring from the job callback
   // could run before the page was updated and report the label shown before it, which decides
   // whether the user is asked about a clipped label.
   useEffect(() => {
-    if (!snapshot) return;
     let cancelled = false;
 
     void (async () => {
@@ -70,10 +56,6 @@ export const PrintDocument: React.FC = () => {
       cancelled = true;
     };
   }, [snapshot]);
-
-  if (!snapshot) {
-    return <div className="text-gray-400 p-4">Awaiting print snapshot...</div>;
-  }
 
   if (snapshot.contentKind === 'image' && snapshot.image) {
     // One portrait 4 × 6 page holding the 812 × 1218 black-and-white label, edge to edge.

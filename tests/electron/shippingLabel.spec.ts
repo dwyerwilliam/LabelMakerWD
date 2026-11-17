@@ -206,7 +206,12 @@ test('the main process accepts a valid shipping-label job and refuses malformed 
     }, snapshot);
 
   // A valid job gets past validation: it is prepared, or stops only because no 4 × 6 printer is set up here.
-  expect(await prepare(imageJob(png))).toMatch(/^prepared$|No printer queue is selected/);
+  const result = await prepare(imageJob(png));
+  expect(result).toMatch(/^prepared$|No printer queue is selected/);
+  if (result === 'prepared') {
+    const printPage = app.windows().find((page) => page.url().includes('print.html'))!;
+    await expect(printPage.locator('img.shipping-label-image')).toHaveCount(0);
+  }
 
   // A tiny 100 × 100 PNG claiming to be a label.
   const small = await window.evaluate(() => {

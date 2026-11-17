@@ -67,8 +67,8 @@ function setup(
         windowHandlers[event] = handler;
       }),
       // The hidden print window answers each job with the layout it measured.
-      send: vi.fn((channel: string, snapshot: PrintSnapshot) => {
-        if (channel !== IPC_CHANNELS.PRINT_WINDOW_JOB) return;
+      send: vi.fn((channel: string, snapshot: PrintSnapshot | null) => {
+        if (channel !== IPC_CHANNELS.PRINT_WINDOW_JOB || !snapshot) return;
         queueMicrotask(() => {
           service.handlePrintWindowReady(snapshot.requestId, { ...snapshot.expectedLayout, ...options.measured });
         });
@@ -473,6 +473,43 @@ describe('PrintService with shipping-label images', () => {
     const { service } = setup({ queue: { status: 'offline' } });
     const result = await service.prepare(imageSnapshot());
     expect(result.confirmationReasons).toEqual(['printer_unavailable']);
+  });
+
+  it('clears the hidden image on cancel or expiry and ignores an older token', async () => {
+    const { service, printWindow } = setup();
+    const send = vi.mocked(printWindow.webContents.send);
+    const first = await service.prepare(imageSnapshot());
+    service.cancel(first.token!);
+    expect(send).toHaveBeenLastCalledWith(IPC_CHANNELS.PRINT_WINDOW_JOB, null);
+
+    const next = imageSnapshot();
+    await service.prepare(next);
+    service.cancel(first.token!);
+    expect(send).toHaveBeenLastCalledWith(IPC_CHANNELS.PRINT_WINDOW_JOB, next);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(send).toHaveBeenLastCalledWith(IPC_CHANNELS.PRINT_WINDOW_JOB, null);
+  });
+
+  it('releases a submitted image on completion or timeout without clearing a later label', async () => {
+    const { service, printCalls, printWindow } = setup();
+    const send = vi.mocked(printWindow.webContents.send);
+    const first = imageSnapshot();
+    const firstPrep = await service.prepare(first);
+    const firstDone = service.confirm(firstPrep.token!, first.requestId);
+    service.cancel(firstPrep.token!);
+    expect(send).toHaveBeenLastCalledWith(IPC_CHANNELS.PRINT_WINDOW_JOB, first);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await firstDone;
+    expect(send).toHaveBeenLastCalledWith(IPC_CHANNELS.PRINT_WINDOW_JOB, null);
+
+    const next = imageSnapshot();
+    const nextPrep = await service.prepare(next);
+    printCalls[0].callback(true, '');
+    expect(send).toHaveBeenLastCalledWith(IPC_CHANNELS.PRINT_WINDOW_JOB, next);
+    const nextDone = service.confirm(nextPrep.token!, next.requestId);
+    printCalls[1].callback(true, '');
+    await nextDone;
+    expect(send).toHaveBeenLastCalledWith(IPC_CHANNELS.PRINT_WINDOW_JOB, null);
   });
 
   it('never logs the image', async () => {
