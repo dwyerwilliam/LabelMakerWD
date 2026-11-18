@@ -24,7 +24,7 @@ test('Print is disabled until a shipping label is loaded, and says why', async (
   await expect(printButton(page)).toBeDisabled();
   await expect(printButton(page)).toHaveAttribute('title', 'Paste or drop a shipping label first');
   // The shortcut obeys the same rule.
-  await page.keyboard.press('Control+p');
+  await page.keyboard.press('ControlOrMeta+p');
   expect(await lastSnapshot(page)).toBeNull();
 });
 
@@ -62,7 +62,7 @@ test('a letter PDF is reviewed in the crop dialog, then printed with Ctrl+P', as
   await expect(dialog).toBeHidden();
   await expect(page.getByTestId('shipping-caption')).toHaveText('From ebay-letter.pdf, page 1 · actual size');
 
-  await page.keyboard.press('Control+p');
+  await page.keyboard.press('ControlOrMeta+p');
   await expect(page.getByText('Sent to iDPRT SP410BT')).toBeVisible();
   expect(((await lastSnapshot(page)) as Record<string, any>).contentKind).toBe('image');
 });
