@@ -113,7 +113,7 @@
       "category": "public.app-category.utilities"
     },
     "dmg": {
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "LabelMaker-${version}-${arch}.${ext}"
     },
     "publish": null
   }

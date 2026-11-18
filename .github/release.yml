@@ -1,0 +1,21 @@
+# Groups the automatically generated release notes by pull request label.
+changelog:
+  exclude:
+    labels:
+      - skip-release-notes
+  categories:
+    - title: New features
+      labels:
+        - enhancement
+    - title: Fixes
+      labels:
+        - bug
+        - accessibility
+    - title: Dependencies
+      labels:
+        - dependencies
+        - github_actions
+        - javascript
+    - title: Other changes
+      labels:
+        - '*'
