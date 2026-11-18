@@ -72,7 +72,15 @@ Because the installers are unsigned, the first run triggers an operating-system 
 
 ## Building releases
 
-To make a release, update the version in `package.json` and `package-lock.json`, commit and push the changes, then push a matching tag (for example, `v0.1.0`). The release workflow builds all three installers, checks the tag against the package version, and publishes them with SHA-256 checksums only after every build succeeds. A manual **Build installers and release** workflow run builds downloadable Actions artifacts without publishing a release; these artifacts expire after 14 days.
+Releases are made by the **Build installers and release** workflow; nothing is committed to make one.
+
+1. Merge the changes into `main` through pull requests.
+2. Open **Actions → Build installers and release → Run workflow**, choose `main`, tick **Publish a release**, and choose **patch**, **minor** or **major**. You can also type an exact version, such as `1.0.0`, or a pre-release such as `1.1.0-beta.1`.
+3. The workflow raises the latest release tag by that part (the first release uses the version in `package.json`), builds and tests all three installers with that version, and only after every build passes creates the tag and the GitHub release.
+
+Each release is marked **Latest** (pre-releases are not) and lists the three installers, `SHA256SUMS.txt`, a download table, and notes generated from the pull requests merged since the previous release, grouped by label (see `.github/release.yml`). The [Releases page](https://github.com/dwyerwilliam/LabelMakerWD/releases) is the version history.
+
+Running the workflow without **Publish a release**, on any branch, builds the installers as Actions artifacts only; they expire after 14 days. Pushing a tag such as `v1.2.3` still releases that version.
 
 ## Architecture & Technology Stack
 
