@@ -42,7 +42,15 @@ async function renderInPrintWindow(app: ElectronApplication, snapshot: Snapshot)
 
   const result = await app.evaluate(
     async ({ BrowserWindow }, { channel, job }) => {
-      const printWindow = BrowserWindow.getAllWindows().find((win) => win.webContents.getURL().includes('print.html'))!;
+      // The hidden print window may not have loaded print.html yet right after launch.
+      const findPrintWindow = () =>
+        BrowserWindow.getAllWindows().find((win) => win.webContents.getURL().includes('print.html'));
+      let printWindow = findPrintWindow();
+      for (let i = 0; !printWindow && i < 100; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        printWindow = findPrintWindow();
+      }
+      if (!printWindow) throw new Error('The print window never loaded print.html');
       // Wait for the label to be laid out in the print window. The print page may still be
       // starting (the app waits for its own 'listening' signal), so the job is sent again
       // until the page has taken it.
@@ -206,7 +214,16 @@ test('the print window reports overflow for the label it was given, whichever la
 
       const reported = await app.evaluate(
         async ({ BrowserWindow, ipcMain }, { jobChannel, readyChannel, job }) => {
-          const printWindow = BrowserWindow.getAllWindows().find((win) => win.webContents.getURL().includes('print.html'))!;
+          // The hidden print window may not have loaded print.html yet right after launch.
+          const findPrintWindow = () =>
+            BrowserWindow.getAllWindows().find((win) => win.webContents.getURL().includes('print.html'));
+          let printWindow = findPrintWindow();
+          for (let i = 0; !printWindow && i < 100; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            printWindow = findPrintWindow();
+          }
+          if (!printWindow) throw new Error('The print window never loaded print.html');
+          const win = printWindow;
           return await new Promise<{ overflow: boolean; lines: number }>((resolve) => {
             const onReady = (_event: unknown, payload: { requestId: string; fingerprint: { overflow: boolean; lineTextOffsets: number[] } }) => {
               if (payload.requestId !== job.requestId) return;
@@ -216,8 +233,8 @@ test('the print window reports overflow for the label it was given, whichever la
             };
             ipcMain.on(readyChannel, onReady);
             // The print page may still be starting; the job is sent again until it answers.
-            const resend = setInterval(() => printWindow.webContents.send(jobChannel, job), 400);
-            printWindow.webContents.send(jobChannel, job);
+            const resend = setInterval(() => win.webContents.send(jobChannel, job), 400);
+            win.webContents.send(jobChannel, job);
           });
         },
         { jobChannel: IPC_CHANNELS.PRINT_WINDOW_JOB, readyChannel: IPC_CHANNELS.PRINT_WINDOW_READY, job }
