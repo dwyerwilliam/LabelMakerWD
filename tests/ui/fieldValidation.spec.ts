@@ -25,7 +25,7 @@ test('an invalid font size is flagged, blocks Print and Ctrl+P, and Escape resto
     // The entry is kept, not silently replaced.
     await expect(size).toHaveValue(bad);
 
-    await page.keyboard.press('Control+p');
+    await page.keyboard.press('ControlOrMeta+p');
     expect(await prepareCalls(page)).toBe(0);
   }
 
@@ -57,7 +57,7 @@ test('invalid copies are flagged and block Print and Ctrl+P', async ({ page }) =
     await expect(page.getByRole('alert').filter({ hasText: 'Copies must be a whole number from 1 to 99' })).toBeVisible();
     await expect(printButton(page)).toBeDisabled();
 
-    await page.keyboard.press('Control+p');
+    await page.keyboard.press('ControlOrMeta+p');
     expect(await prepareCalls(page)).toBe(0);
   }
 
@@ -69,6 +69,6 @@ test('invalid copies are flagged and block Print and Ctrl+P', async ({ page }) =
 
 test('Ctrl+P prints when every field is valid', async ({ page }) => {
   await page.getByRole('textbox', { name: 'Label text editor' }).click();
-  await page.keyboard.press('Control+p');
+  await page.keyboard.press('ControlOrMeta+p');
   await expect.poll(() => prepareCalls(page)).toBe(1);
 });
