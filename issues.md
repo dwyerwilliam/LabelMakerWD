@@ -75,7 +75,8 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 | LM-062 | P2 | Accessibility | Text colours below the 4.5:1 contrast minimum in both themes; the font button turned unreadable under the mouse in the dark theme | Fixed |
 | LM-063 | P3 | Accessibility | Each printer choice in Settings was a button holding a radio button (two controls for one choice) | Fixed |
 | LM-064 | P3 | Repo | package.json had no author or license, and the packager warned about it on every build | Fixed |
-| LM-065 | P2 | CI | The first PR run failed on macOS: four UI tests pressed Ctrl+P, but the app listens for Cmd+P there | Fixed (macOS Electron tests not yet run) |
+| LM-065 | P2 | CI | The first PR run failed on macOS: four UI tests pressed Ctrl+P, but the app listens for Cmd+P there | Fixed |
+| LM-066 | P1 | Lifecycle | On macOS, Cmd+Q closed the window but left the app running, and every Electron test hung at teardown | Fixed (awaiting macOS CI) |
 
 ## Details
 
@@ -437,12 +438,18 @@ specs in common use · P2 edge case or hardening · P3 hygiene or polish.
 **Fix:** `author` is `dwyerwilliam` (the name in LICENSE) and `license` is `MIT`.
 **Verified:** the packager no longer warns.
 
-### LM-065 · P2 · CI · Fixed (macOS Electron tests not yet run)
+### LM-065 · P2 · CI · Fixed
 **Where:** `tests/ui/fieldValidation.spec.ts`, `tests/ui/dialogs.spec.ts`.
 **Problem:** On macOS the print shortcut is Cmd+P (`App.tsx` checks `metaKey` there). Four tests pressed `Control+p`, so on the macOS runner `Ctrl+P prints when every field is valid` found no print and failed, and the `test:electron` step after it was skipped. Windows passed all steps on the same run. This is a test portability slip, not an app defect; the other three tests passed vacuously on macOS.
 **Fix:** The tests press `ControlOrMeta+p`.
 **Also:** the branch `build-v1` was renamed `main` on GitHub on the owner's request, so `ci.yml` no longer lists `build-v1`.
-**Limit:** the macOS `test:electron` step has not yet run on any macOS runner, so more failures may appear there.
+**Limit:** the macOS `test:electron` step then ran for the first time and found LM-066.
+
+### LM-066 · P1 · Lifecycle · Fixed (awaiting macOS CI)
+**Where:** `src/main/index.ts` `guardClose`.
+**Problem:** The close guard cancels every first close so it can ask about the label, and that also cancels an `app.quit()` in progress. After the guard let the window close, Windows quit through `window-all-closed`, but macOS keeps an app running with no windows. So Cmd+Q left Label Maker open with no window, and on the macOS runner Playwright's `app.close()` never returned: 11 of 13 Electron tests hit the 45 s teardown timeout and the job ran out of time.
+**Fix:** `before-quit` records that a quit was asked for. Once the guard approves, it resumes the quit instead of only closing the window; "Keep editing" clears the request.
+**Verified:** New Electron test: quitting with text asks, stays open on Keep editing, and the process exits on Discard. All 14 Electron tests pass on Windows; macOS waits on CI.
 
 ## Run log
 

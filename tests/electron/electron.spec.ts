@@ -129,6 +129,33 @@ test('asks before closing a label that has text, and keeps it if the user cancel
   }
 });
 
+test('quitting asks about a label with text, stays open on Keep editing, and quits on Discard', async () => {
+  const { app, window } = await launchApp();
+  try {
+    await scriptCloseDialog(app, 0);
+
+    const editor = window.getByRole('textbox', { name: 'Label text editor' });
+    await editor.click();
+    await editor.fill('Hello');
+    await window.evaluate(() => globalThis.window.api.preferences.get());
+
+    // Cmd+Q / File > Exit: "Keep editing" cancels the quit.
+    await app.evaluate(({ app: electronApp }) => electronApp.quit());
+    await expect.poll(() => promptCount(app)).toBe(1);
+    await window.waitForTimeout(500);
+    expect(window.isClosed()).toBe(false);
+
+    // "Discard label and close": the whole app exits, macOS included, where an
+    // app normally keeps running after its last window closes.
+    await scriptCloseDialog(app, 1);
+    const exited = new Promise((resolve) => app.process().once('exit', resolve));
+    await app.evaluate(({ app: electronApp }) => electronApp.quit()).catch(() => undefined);
+    await exited;
+  } finally {
+    await closeApp(app);
+  }
+});
+
 test('closes without asking when the label is empty', async () => {
   const { app, window } = await launchApp();
   try {
