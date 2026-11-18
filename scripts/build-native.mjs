@@ -86,7 +86,7 @@ if (isWin) {
   const out = path.resolve(outputDir, 'inspect_printer');
   try {
     console.log('Compiling macOS inspection helper with swiftc...');
-    execFileSync('swiftc', ['-O', src, '-o', out, '-framework', 'ApplicationServices'], { stdio: 'inherit' });
+    execFileSync('swiftc', ['-O', src, '-o', out, '-framework', 'ApplicationServices', '-framework', 'IOKit'], { stdio: 'inherit' });
     console.log(`Successfully built ${out}`);
   } catch (error) {
     fs.rmSync(out, { force: true });
