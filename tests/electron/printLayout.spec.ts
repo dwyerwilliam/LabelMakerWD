@@ -33,6 +33,7 @@ async function renderInPrintWindow(app: ElectronApplication, snapshot: Snapshot)
   const job = {
     requestId: '00000000-0000-4000-8000-000000000000',
     draftRevision: 1,
+    contentKind: 'text',
     resolvedFontFamily: 'Arial',
     alignment: 'left',
     copies: 1,
@@ -197,6 +198,7 @@ test('the print window reports overflow for the label it was given, whichever la
       const job = {
         requestId: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
         draftRevision: n,
+        contentKind: 'text',
         resolvedFontFamily: 'Arial',
         alignment: 'left',
         copies: 1,

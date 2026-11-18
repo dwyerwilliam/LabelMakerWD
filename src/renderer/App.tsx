@@ -4,14 +4,19 @@ import { LabelEditor } from './components/LabelEditor';
 import { PrinterStatus } from './components/PrinterStatus';
 import { SettingsDialog } from './components/SettingsDialog';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { useLabelStore } from './stores/labelStore';
+import { selectEffectiveContentMode, useLabelStore } from './stores/labelStore';
+import { useShippingStore } from './stores/shippingStore';
+import { ShippingLabelView } from './components/ShippingLabelView';
+import { CropDialog } from './components/CropDialog';
+import { ShippingInputContext, useShippingInput } from './hooks/useShippingInput';
+import { IMAGE_LAYOUT_FINGERPRINT, SHIPPING_HEIGHT_PX, SHIPPING_WIDTH_PX } from '@shared/shipping';
 import { useDeviceStore } from './stores/deviceStore';
 import { usePreferencesStore } from './stores/preferencesStore';
 import { useUIStore } from './stores/uiStore';
 import { useFontStore } from './stores/fontStore';
 import { resolveFontFamily } from './fonts/fontCatalog';
 import { usePrintBlockers } from './hooks/usePrintBlockers';
-import type { ConfirmationReason, PrintPrepareResult, PrintSnapshot } from '@shared/contracts';
+import type { ConfirmationReason, PrintSnapshot } from '@shared/contracts';
 import { describeIpcError } from './ipcError';
 import { queueIdentityFingerprint } from '@shared/printerSelection';
 
@@ -31,6 +36,19 @@ export const App: React.FC = () => {
     setNotice,
   } = useUIStore();
 
+  // Shipping labels: paste/drop listeners (registered once) and the actions the toolbar and view use.
+  const { actions: shippingActions, fileInput: shippingFileInput } = useShippingInput();
+  const effectiveMode = useLabelStore(selectEffectiveContentMode);
+  const shippingProcessed = useShippingStore((s) => s.processed);
+  const draftRevision = useLabelStore((s) => s.draft.revision);
+  const setLayoutFingerprint = useLabelStore((s) => s.setLayoutFingerprint);
+
+  // A shipping image has no text to measure: its layout is fixed, so every new revision of an
+  // image label gets the fixed image fingerprint (the text editor is not mounted in this mode).
+  useEffect(() => {
+    if (effectiveMode === 'image' && shippingProcessed) setLayoutFingerprint(IMAGE_LAYOUT_FINGERPRINT, draftRevision);
+  }, [effectiveMode, shippingProcessed, draftRevision, setLayoutFingerprint]);
+
   // Installed fonts: read at launch (and again from Settings → Refresh fonts).
   const fontStatus = useFontStore((s) => s.status);
   const fontList = useFontStore((s) => s.fonts);
@@ -48,14 +66,15 @@ export const App: React.FC = () => {
     setResolvedFont(resolved);
   }, [fontStatus, fontList, fontSource, draft.preferredFontFamily, draft.profile, setResolvedFont]);
 
-  const [pendingPrepareResult, setPendingPrepareResult] = useState<PrintPrepareResult | null>(null);
+  const [pendingPrint, setPendingPrint] = useState<{ token: string; requestId: string } | null>(null);
   // Confirmations still to ask after the one on screen (for example clipped text
   // on a printer that is offline: both must be agreed to, one after the other).
   const [pendingConfirmations, setPendingConfirmations] = useState<ConfirmationReason[]>([]);
 
   // Main asks before closing a window that still holds label text, so it only
   // needs to know whether there is any (the text itself stays in the renderer).
-  const labelHasText = draft.text.trim().length > 0;
+  // A loaded shipping label counts too: it cannot be reopened either.
+  const labelHasText = draft.text.trim().length > 0 || shippingProcessed !== null;
   useEffect(() => {
     if (!window.api) return;
     void window.api.app.setLabelHasText(labelHasText).catch((err: unknown) => {
@@ -137,7 +156,7 @@ export const App: React.FC = () => {
             settingsProblem.kind === 'repaired'
               ? `Some saved settings were not valid and were reset to their defaults (${(settingsProblem.fields ?? []).join(', ')}).${copy}`
               : settingsProblem.kind === 'newer'
-                ? `Your settings were saved by a newer version of Label Maker, so defaults are being used.${copy}`
+                ? 'Your settings were saved by a newer version of Label Maker. Changes apply only to this session. Choose Restore Factory Defaults to replace the file and save changes again.'
                 : `Your saved settings could not be read, so defaults are being used.${copy}`
           );
         }
@@ -212,25 +231,45 @@ export const App: React.FC = () => {
       return;
     }
 
-    const snapshot: PrintSnapshot = {
-      requestId: crypto.randomUUID(),
-      draftRevision: draft.revision,
-      text: draft.text,
-      profile: draft.profile,
-      orientation: draft.orientation,
-      resolvedFontFamily: draft.resolvedFontFamily,
-      fontSizePt: draft.fontSizePt,
-      alignment: draft.alignment,
-      copies: draft.copies,
-      expectedLayout: layoutFingerprint,
-    };
+    // A shipping label prints its 812 × 1218 image on one portrait 4 × 6 page; the font fields
+    // are carried only because the snapshot shape requires them.
+    const shipping = useShippingStore.getState().processed;
+    const isImage = selectEffectiveContentMode(useLabelStore.getState()) === 'image';
+    if (isImage && !shipping) return;
+    const snapshot: PrintSnapshot = isImage && shipping
+      ? {
+          requestId: crypto.randomUUID(),
+          draftRevision: draft.revision,
+          contentKind: 'image',
+          text: '',
+          profile: '4x6',
+          orientation: 'portrait',
+          resolvedFontFamily: draft.resolvedFontFamily,
+          fontSizePt: draft.fontSizePt,
+          alignment: draft.alignment,
+          copies: draft.copies,
+          expectedLayout: IMAGE_LAYOUT_FINGERPRINT,
+          image: { pngBase64: shipping.pngBase64, widthPx: SHIPPING_WIDTH_PX, heightPx: SHIPPING_HEIGHT_PX },
+        }
+      : {
+          requestId: crypto.randomUUID(),
+          draftRevision: draft.revision,
+          contentKind: 'text',
+          text: draft.text,
+          profile: draft.profile,
+          orientation: draft.orientation,
+          resolvedFontFamily: draft.resolvedFontFamily,
+          fontSizePt: draft.fontSizePt,
+          alignment: draft.alignment,
+          copies: draft.copies,
+          expectedLayout: layoutFingerprint,
+        };
 
     try {
       setPrintBusy(true, 'Preparing label…');
       const prepareRes = await window.api.print.prepare(snapshot);
-      setPendingPrepareResult(prepareRes);
-
       if (prepareRes.requiresConfirmation && prepareRes.confirmationReasons.length > 0) {
+        if (prepareRes.token) setPendingPrint({ token: prepareRes.token, requestId: snapshot.requestId });
         setPrintBusy(false);
         askNextConfirmation(prepareRes.confirmationReasons);
         return;
@@ -268,18 +307,19 @@ export const App: React.FC = () => {
       askNextConfirmation(pendingConfirmations);
       return;
     }
-    if (pendingPrepareResult?.token) {
-      await executeConfirmedPrint(pendingPrepareResult.token, pendingPrepareResult.snapshot.requestId);
+    if (pendingPrint) {
+      setPendingPrint(null);
+      await executeConfirmedPrint(pendingPrint.token, pendingPrint.requestId);
     }
   };
 
   const handleCancelPrepare = async () => {
     closeDialog();
     setPendingConfirmations([]);
-    if (pendingPrepareResult?.token && window.api) {
-      await window.api.print.cancel(pendingPrepareResult.token);
+    if (pendingPrint && window.api) {
+      await window.api.print.cancel(pendingPrint.token);
     }
-    setPendingPrepareResult(null);
+    setPendingPrint(null);
   };
 
   const handleAcknowledgeUncertain = () => {
@@ -300,13 +340,15 @@ export const App: React.FC = () => {
       const reset = await window.api.preferences.reset();
       resetPrefs(reset);
       hydratePreferences(reset, true);
+      setNotice(null);
       await handleScanPrinters();
     } catch (err) {
-      console.error('Failed restoring defaults:', err);
+      setNotice(describeIpcError(err, 'Could not restore factory defaults.'));
     }
   };
 
   return (
+    <ShippingInputContext.Provider value={shippingActions}>
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 font-sans text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">
       <Toolbar onPrintClick={handlePrintClick} />
 
@@ -320,8 +362,12 @@ export const App: React.FC = () => {
       )}
 
       <main className="flex flex-1 overflow-hidden">
-        <LabelEditor />
+        {effectiveMode === 'image' ? <ShippingLabelView /> : <LabelEditor />}
       </main>
+
+      {shippingFileInput}
+
+      <CropDialog />
 
       <PrinterStatus onRescan={handleRescan} />
 
@@ -402,7 +448,7 @@ export const App: React.FC = () => {
       <ConfirmDialog
         isOpen={activeDialog === 'confirm-reset'}
         title="Restore Factory Defaults?"
-        message="This will reset both label profiles, their printer selections, and formatting to initial defaults. Your current text will be preserved."
+        message="This will reset both label profiles, their printer selections, formatting, and shipping-label settings to initial defaults. Your current label will be preserved."
         confirmLabel="Restore Defaults"
         cancelLabel="Cancel"
         isDestructive={true}
@@ -410,5 +456,6 @@ export const App: React.FC = () => {
         onCancel={closeDialog}
       />
     </div>
+    </ShippingInputContext.Provider>
   );
 };

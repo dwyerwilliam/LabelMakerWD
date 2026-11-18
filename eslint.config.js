@@ -5,7 +5,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'dist-electron/**', 'releases/**', 'native-bin/**', 'node_modules/**', 'test-results/**', 'worktrees/**', '.claude/**', 'docs/**'],
+    ignores: ['dist/**', 'public/pdfjs/**', 'dist-electron/**', 'releases/**', 'native-bin/**', 'node_modules/**', 'test-results/**', 'worktrees/**', '.claude/**', 'docs/**'],
   },
 
   js.configs.recommended,

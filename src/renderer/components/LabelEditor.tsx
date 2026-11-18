@@ -4,6 +4,7 @@ import { LabelSurface } from '../label/LabelSurface';
 import { calculateFitScale, getPageDimensions } from '../label/geometry';
 import { measureLayoutFingerprint } from '../label/layout';
 import { EditHistory } from '../editor/history';
+import { loadPastedFile, pickSupportedFile } from '../hooks/useShippingInput';
 import { normalizePlainText, sanitizePastedHtml, serializeEditableText } from '../editor/textModel';
 import {
   getCaretCharacterOffsetWithin,
@@ -104,6 +105,16 @@ export const LabelEditor: React.FC = () => {
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     e.preventDefault();
     const plain = e.clipboardData.getData('text/plain');
+
+    // A screen snip (no text) pasted on the 4 × 6 tab becomes a shipping label; plain text always wins.
+    if (plain === '' && useLabelStore.getState().activeProfile === '4x6') {
+      const { file } = pickSupportedFile(e.clipboardData);
+      if (file) {
+        loadPastedFile(file);
+        return;
+      }
+    }
+
     const html = e.clipboardData.getData('text/html');
 
     const clean = plain ? normalizePlainText(plain) : sanitizePastedHtml(html);

@@ -1,6 +1,6 @@
 import type { PreferencesV2 } from './contracts';
 import { createDefaultPreferences, PRINTER_PROFILES } from './defaults';
-import { printerProfileSchema, profilePreferencesSchema } from './schemas';
+import { printerProfileSchema, profilePreferencesSchema, shippingLabelPreferencesSchema } from './schemas';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -49,6 +49,13 @@ export function repairPreferences(json: unknown): RepairResult | null {
       if (printer.success) target.printer = printer.data;
       else repaired.push(`${profile}.printer`);
     }
+  }
+
+  // A missing shippingLabel entry is an older file, not damage: the default stays.
+  if (json.shippingLabel !== undefined) {
+    const shipping = shippingLabelPreferencesSchema.safeParse(json.shippingLabel);
+    if (shipping.success) defaults.shippingLabel = shipping.data;
+    else repaired.push('shippingLabel');
   }
 
   return { preferences: defaults, repaired };

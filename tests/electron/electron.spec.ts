@@ -95,6 +95,24 @@ test('saves formatting to the settings file and restores it on relaunch', async 
   }
 });
 
+test('a newer settings file survives session edits and the normal window close', async () => {
+  const settingsFile = path.join(userDataDir, 'settings.json');
+  const original = JSON.stringify({ schemaVersion: 99, futureSetting: 'preserve' }, null, 2);
+  fs.writeFileSync(settingsFile, original);
+  const { app, window } = await launchApp();
+  try {
+    await expect(window.getByText(/Changes apply only to this session/)).toBeVisible();
+    await window.getByTitle('Increase 1 pt').click();
+    await expect(window.locator('#fontSizeInput')).toHaveValue('25');
+    const closed = window.waitForEvent('close');
+    await requestWindowClose(app);
+    await closed;
+  } finally {
+    await closeApp(app);
+  }
+  expect(fs.readFileSync(settingsFile, 'utf-8')).toBe(original);
+});
+
 test('asks before closing a label that has text, and keeps it if the user cancels', async () => {
   const { app, window } = await launchApp();
   try {

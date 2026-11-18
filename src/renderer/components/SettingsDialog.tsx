@@ -6,6 +6,7 @@ import { ModalFrame } from './ModalFrame';
 import { useDeviceStore } from '../stores/deviceStore';
 import { useUIStore } from '../stores/uiStore';
 import { useFontStore } from '../stores/fontStore';
+import { usePreferencesStore } from '../stores/preferencesStore';
 
 export interface SettingsDialogProps {
   onRefreshPrinters: () => void;
@@ -36,6 +37,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   const [stockConfirmed, setStockConfirmed] = useState(false);
   const [fontsMessage, setFontsMessage] = useState<string | null>(null);
   const [fontsRefreshing, setFontsRefreshing] = useState(false);
+  const rememberedCropCount = usePreferencesStore((s) => s.preferences.shippingLabel?.rememberedCrops.length ?? 0);
+  const updateShipping = usePreferencesStore((s) => s.updateShipping);
   // A correctly named queue whose connection type could not be read: the user
   // must confirm it is USB before it can be used.
   const [usbPrompt, setUsbPrompt] = useState<{ profile: PrinterProfile; deviceName: string } | null>(null);
@@ -236,6 +239,14 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
           </section>
 
           <section className="border-t border-slate-200 pt-4 dark:border-slate-800">
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Shipping labels</h3>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">For each PDF page size, the label area you chose last is suggested first next time. Only the area is remembered, never the label.</p>
+            <button type="button" disabled={rememberedCropCount === 0} onClick={() => updateShipping({ rememberedCrops: [] })} className="mt-2 rounded-sm border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">
+              {`Forget ${rememberedCropCount} remembered label area${rememberedCropCount === 1 ? '' : 's'}`}
+            </button>
+          </section>
+
+          <section className="border-t border-slate-200 pt-4 dark:border-slate-800">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">System Fonts</h3>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Label Maker enumerates local fonts installed on your computer.</p>
             <div className="mt-2 flex items-center gap-3">
@@ -246,7 +257,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
           <section className="border-t border-slate-200 pt-4 dark:border-slate-800">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Restore Defaults</h3>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Reset both profiles, their formatting, and printer selections. Current label text is preserved.</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Reset both profiles, their formatting, printer selections, and shipping-label settings. The current label is preserved.</p>
             <button type="button" onClick={onRestoreDefaults} className="mt-2 rounded-sm border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/20">Restore Factory Defaults…</button>
           </section>
         </div>

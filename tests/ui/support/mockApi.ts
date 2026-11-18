@@ -15,6 +15,12 @@ export interface MockOptions {
   savedFont?: string;
   /** Font families the fake system reports as installed. Omit to leave `queryLocalFonts` undefined (the app then checks common fonts itself). */
   installedFonts?: string[];
+  /** Saved shipping-label preferences (default: Text mode, darkness 3, no remembered crops). */
+  shippingLabel?: {
+    mode4x6: 'text' | 'image';
+    darkness: 1 | 2 | 3 | 4 | 5;
+    rememberedCrops: Array<{ pageWidthPt: number; pageHeightPt: number; rect: { x: number; y: number; width: number; height: number }; rotation: 0 | 90 | 180 | 270 }>;
+  };
 }
 
 /**
@@ -36,7 +42,12 @@ export async function installMockApi(page: Page, options: MockOptions = {}): Pro
       },
       '2x1': { orientation: 'landscape', fontFamily: 'Arial', fontSizePt: 12, alignment: 'center', printer: null },
     };
-    const preferences = { schemaVersion: 2, activeProfile: '4x6', profiles };
+    const preferences = {
+      schemaVersion: 2,
+      activeProfile: '4x6',
+      profiles,
+      shippingLabel: opts.shippingLabel ?? { mode4x6: 'text', darkness: 3, rememberedCrops: [] },
+    };
 
     const makeQueue = (profile: '4x6' | '2x1', status: string) => {
       const name = profile === '4x6' ? 'iDPRT SP410BT' : 'iDPRT SP310';
@@ -79,13 +90,25 @@ export async function installMockApi(page: Page, options: MockOptions = {}): Pro
       calls: { prepare: 0, confirm: 0, cancel: 0, scan: 0 },
       /** The snapshot the app last asked to print. */
       lastSnapshot: null as null | Record<string, unknown>,
+      /** PNG bytes the Paste button finds on the system clipboard (null: no image). */
+      clipboardImage: null as null | Uint8Array,
+      /** Every preferences.update payload, in order. */
+      preferenceUpdates: [] as Array<Record<string, unknown>>,
+      /** The last value the app reported to setLabelHasText (the close guard). */
+      labelHasText: false,
       emit: (event: { requestId: string; state: string; detail?: string }) => listeners.forEach((l) => l(event)),
     };
 
     const w = window as unknown as Record<string, unknown>;
     w.__mock = mock;
     w.api = {
-      preferences: { get: async () => preferences, update: async () => {}, reset: async () => preferences },
+      preferences: {
+        get: async () => preferences,
+        update: async (partial: Record<string, unknown>) => {
+          mock.preferenceUpdates.push(JSON.parse(JSON.stringify(partial)));
+        },
+        reset: async () => preferences,
+      },
       printers: {
         scan: async () => {
           mock.calls.scan += 1;
@@ -133,8 +156,13 @@ export async function installMockApi(page: Page, options: MockOptions = {}): Pro
         },
       },
       app: {
-        setLabelHasText: async () => {},
+        setLabelHasText: async (hasText: boolean) => {
+          mock.labelHasText = hasText;
+        },
         getLaunchInfo: async () => ({ firstLaunch: opts.firstLaunch === true }),
+      },
+      clipboard: {
+        readImage: async () => mock.clipboardImage,
       },
     };
   }, options);
@@ -170,4 +198,14 @@ export async function configureMock(page: Page, fn: (mock: MockControls) => void
 /** The label snapshot the app last sent to be printed. */
 export async function lastSnapshot(page: Page): Promise<Record<string, unknown> | null> {
   return page.evaluate(() => (window as unknown as { __mock: { lastSnapshot: Record<string, unknown> | null } }).__mock.lastSnapshot);
+}
+
+/** Every preferences.update payload the app sent, in order. */
+export async function preferenceUpdates(page: Page): Promise<Array<Record<string, any>>> {
+  return page.evaluate(() => (window as unknown as { __mock: { preferenceUpdates: Array<Record<string, any>> } }).__mock.preferenceUpdates);
+}
+
+/** What the app last told main about whether closing would discard a label. */
+export async function labelHasText(page: Page): Promise<boolean> {
+  return page.evaluate(() => (window as unknown as { __mock: { labelHasText: boolean } }).__mock.labelHasText);
 }

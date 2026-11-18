@@ -35,6 +35,10 @@ export interface ElectronAPI {
     /** Whether this launch started without a settings file. */
     getLaunchInfo: () => Promise<LaunchInfo>;
   };
+  clipboard: {
+    /** PNG bytes of the image on the system clipboard, or null when there is none. */
+    readImage: () => Promise<Uint8Array | null>;
+  };
 }
 
 const api: ElectronAPI = {
@@ -66,6 +70,9 @@ const api: ElectronAPI = {
   app: {
     setLabelHasText: (hasText) => ipcRenderer.invoke(IPC_CHANNELS.APP_SET_LABEL_HAS_TEXT, hasText),
     getLaunchInfo: () => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_LAUNCH_INFO),
+  },
+  clipboard: {
+    readImage: () => ipcRenderer.invoke(IPC_CHANNELS.CLIPBOARD_READ_IMAGE),
   },
 };
 

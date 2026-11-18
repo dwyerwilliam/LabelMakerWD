@@ -8,6 +8,8 @@
 
 **Targets:** Windows and macOS only. Linux is deferred.
 
+**Shipping labels:** the 4 × 6 Shipping label mode (pdf.js, image processing, image print jobs) is specified and documented in [SHIPPING_LABEL_TECHNICAL_SPEC.md](SHIPPING_LABEL_TECHNICAL_SPEC.md). It adds `contentKind`/`image` to the print snapshot and a `shippingLabel` block to the version 2 settings without changing anything described here.
+
 ## 1. Architecture decision
 
 Use **Electron + React + TypeScript + Vite + Zustand**, with **electron-builder** for packaging, **Vitest** for unit/service tests, and **Playwright** for UI and Electron integration tests.
