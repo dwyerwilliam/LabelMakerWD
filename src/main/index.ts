@@ -44,6 +44,15 @@ let services: AppServices | null = null;
 let mainWindow: BrowserWindow | null = null;
 let printWindow: BrowserWindow | null = null;
 
+// Set when the user (or automation) asks the whole app to quit. The close guard
+// cancels that quit while it asks about the label, so once the window is
+// allowed to close it resumes the quit; otherwise macOS, which keeps an app
+// running with no windows, would stay open after Cmd+Q.
+let quitRequested = false;
+app.on('before-quit', () => {
+  quitRequested = true;
+});
+
 function installApplicationMenu(): void {
   if (process.platform === 'darwin') {
     // macOS routes Cmd+C/V/X/A, Cmd+W and Cmd+Q through the application menu.
@@ -100,12 +109,19 @@ function guardClose(win: BrowserWindow, svc: AppServices): void {
 
     void (async () => {
       try {
-        if (!(await confirmClose(win, svc))) return;
+        if (!(await confirmClose(win, svc))) {
+          quitRequested = false;
+          return;
+        }
         await svc.settings.flush().catch((error) => {
           console.warn('Could not flush settings while closing:', error);
         });
         approved = true;
-        if (!win.isDestroyed()) win.close();
+        if (quitRequested) {
+          app.quit();
+        } else if (!win.isDestroyed()) {
+          win.close();
+        }
       } finally {
         asking = false;
       }
