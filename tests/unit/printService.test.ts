@@ -5,6 +5,8 @@ import type { LayoutFingerprint, NormalizedQueue, PrintSnapshot } from '@shared/
 import { IPC_CHANNELS } from '@shared/channels';
 import { PrintService } from '@main/services/printService';
 import type { PrinterService } from '@main/services/printerService';
+import { IMAGE_LAYOUT_FINGERPRINT } from '@shared/shipping';
+import { pngHeader } from './support/png';
 
 type PrintCallback = (success: boolean, failureReason: string) => void;
 
@@ -12,6 +14,7 @@ function snapshotFor(overrides: Partial<PrintSnapshot> = {}): PrintSnapshot {
   return {
     requestId: randomUUID(),
     draftRevision: 1,
+    contentKind: 'text',
     text: 'Hello',
     profile: '4x6',
     orientation: 'portrait',
@@ -64,8 +67,8 @@ function setup(
         windowHandlers[event] = handler;
       }),
       // The hidden print window answers each job with the layout it measured.
-      send: vi.fn((channel: string, snapshot: PrintSnapshot) => {
-        if (channel !== IPC_CHANNELS.PRINT_WINDOW_JOB) return;
+      send: vi.fn((channel: string, snapshot: PrintSnapshot | null) => {
+        if (channel !== IPC_CHANNELS.PRINT_WINDOW_JOB || !snapshot) return;
         queueMicrotask(() => {
           service.handlePrintWindowReady(snapshot.requestId, { ...snapshot.expectedLayout, ...options.measured });
         });
@@ -413,5 +416,109 @@ describe('PrintService', () => {
 
     expect(service.getStatus(ids[0]).state).toBe('idle'); // forgotten
     expect(service.getStatus(ids[59]).state).toBe('submitted');
+  });
+});
+
+describe('PrintService with shipping-label images', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  const imageSnapshot = (width = 812, height = 1218, overrides: Partial<PrintSnapshot> = {}): PrintSnapshot =>
+    snapshotFor({
+      contentKind: 'image',
+      text: '',
+      expectedLayout: { ...IMAGE_LAYOUT_FINGERPRINT },
+      image: { pngBase64: Buffer.from(pngHeader(width, height)).toString('base64'), widthPx: 812, heightPx: 1218 },
+      ...overrides,
+    });
+
+  it('prepares an 812 × 1218 label and prints it on the 4 × 6 page, at actual size, with no confirmations', async () => {
+    const { service, printCalls } = setup();
+    const snapshot = imageSnapshot(812, 1218, { copies: 2 });
+    const result = await service.prepare(snapshot);
+    expect(result.readyToSubmit).toBe(true);
+    expect(result.confirmationReasons).toEqual([]);
+
+    void service.confirm(result.token!, snapshot.requestId);
+    expect(printCalls).toHaveLength(1);
+    expect(printCalls[0].options).toMatchObject({
+      deviceName: 'iDPRT SP410BT',
+      pageSize: { width: 101600, height: 152400 },
+      landscape: false,
+      margins: { marginType: 'none' },
+      scaleFactor: 100,
+      copies: 2,
+    });
+  });
+
+  it('refuses an image that is not exactly one 4 × 6 label at 203 dpi, before using the print window', async () => {
+    const { service, printWindow } = setup();
+    await expect(service.prepare(imageSnapshot(100, 100))).rejects.toThrow('not a valid 4 × 6 label image');
+    await expect(service.prepare(imageSnapshot(1218, 812))).rejects.toThrow('not a valid 4 × 6 label image');
+    const notPng = imageSnapshot(812, 1218, {
+      image: { pngBase64: Buffer.from('GIF89a not a png at all, padding padding').toString('base64'), widthPx: 812, heightPx: 1218 },
+    });
+    await expect(service.prepare(notPng)).rejects.toThrow('not a valid 4 × 6 label image');
+    expect(vi.mocked(printWindow.webContents.send)).not.toHaveBeenCalled();
+  });
+
+  it('still asks before sending to an offline printer', async () => {
+    const { service } = setup({ queue: { status: 'offline' } });
+    const result = await service.prepare(imageSnapshot());
+    expect(result.confirmationReasons).toEqual(['printer_unavailable']);
+  });
+
+  it('clears the hidden image on cancel or expiry and ignores an older token', async () => {
+    const { service, printWindow } = setup();
+    const send = vi.mocked(printWindow.webContents.send);
+    const first = await service.prepare(imageSnapshot());
+    service.cancel(first.token!);
+    expect(send).toHaveBeenLastCalledWith(IPC_CHANNELS.PRINT_WINDOW_JOB, null);
+
+    const next = imageSnapshot();
+    await service.prepare(next);
+    service.cancel(first.token!);
+    expect(send).toHaveBeenLastCalledWith(IPC_CHANNELS.PRINT_WINDOW_JOB, next);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(send).toHaveBeenLastCalledWith(IPC_CHANNELS.PRINT_WINDOW_JOB, null);
+  });
+
+  it('releases a submitted image on completion or timeout without clearing a later label', async () => {
+    const { service, printCalls, printWindow } = setup();
+    const send = vi.mocked(printWindow.webContents.send);
+    const first = imageSnapshot();
+    const firstPrep = await service.prepare(first);
+    const firstDone = service.confirm(firstPrep.token!, first.requestId);
+    service.cancel(firstPrep.token!);
+    expect(send).toHaveBeenLastCalledWith(IPC_CHANNELS.PRINT_WINDOW_JOB, first);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await firstDone;
+    expect(send).toHaveBeenLastCalledWith(IPC_CHANNELS.PRINT_WINDOW_JOB, null);
+
+    const next = imageSnapshot();
+    const nextPrep = await service.prepare(next);
+    printCalls[0].callback(true, '');
+    expect(send).toHaveBeenLastCalledWith(IPC_CHANNELS.PRINT_WINDOW_JOB, next);
+    const nextDone = service.confirm(nextPrep.token!, next.requestId);
+    printCalls[1].callback(true, '');
+    await nextDone;
+    expect(send).toHaveBeenLastCalledWith(IPC_CHANNELS.PRINT_WINDOW_JOB, null);
+  });
+
+  it('never logs the image', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { service } = setup({ measured: { lineTextOffsets: [0] } }); // a mismatch, which is logged
+    const snapshot = imageSnapshot();
+    await service.prepare(snapshot);
+    const logged = [...warn.mock.calls, ...log.mock.calls].flat().map(String).join('\n');
+    expect(logged).not.toContain(snapshot.image!.pngBase64.slice(0, 16));
   });
 });

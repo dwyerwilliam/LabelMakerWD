@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installPrintApi, makeJob, sendJob } from './support/printPage';
+import { installPrintApi, makeImageJob, makeJob, makeLabelPng, sendJob } from './support/printPage';
 
 // The hidden print window measures every label it is given and reports whether the text
 // overflows. That report decides whether the user is asked "Print Clipped Label?", so it
@@ -46,4 +46,27 @@ test('every report describes the label it answers, not the one shown just before
     expect(big.lineTextOffsets.length, `big label, round ${round}`).toBe(100);
     expect(big.overflow, `big label overflow, round ${round}`).toBe(true);
   }
+});
+
+test('a shipping label reports the fixed image layout, and text and image jobs can alternate', async ({ page }) => {
+  const png = await makeLabelPng(page);
+  const imageLayout = { logicalWidthPt: 288, logicalHeightPt: 432, lineRectsPt: [], lineTextOffsets: [], overflow: false };
+
+  for (let round = 0; round < 3; round++) {
+    expect(await sendJob(page, makeImageJob(png))).toEqual(imageLayout);
+    const text = await sendJob(page, makeJob('4x6', 'portrait', 'Hello'));
+    expect(text.lineTextOffsets).toHaveLength(1);
+  }
+
+  // The label image fills exactly one portrait 4 × 6 page.
+  const img = page.locator('img.shipping-label-image');
+  await sendJob(page, makeImageJob(png));
+  await expect(img).toHaveCount(1);
+  const box = await img.boundingBox();
+  expect([box!.width, box!.height]).toEqual([384, 576]);
+  expect(await img.evaluate((el: HTMLImageElement) => [el.naturalWidth, el.naturalHeight])).toEqual([812, 1218]);
+
+  await page.evaluate(() => (window as unknown as { __onJob: (job: null) => void }).__onJob(null));
+  await expect(img).toHaveCount(0);
+  expect(await sendJob(page, makeImageJob(png))).toEqual(imageLayout);
 });

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   Alignment,
+  ContentMode,
   LabelDraft,
   LayoutFingerprint,
   Orientation,
@@ -50,6 +51,8 @@ function makeDraft(
 
 export interface LabelState {
   activeProfile: PrinterProfile;
+  /** Text or shipping label. Only the 4 × 6 profile uses it; see selectEffectiveContentMode. */
+  contentMode: ContentMode;
   profileSettings: ProfileSettingsMap;
   draft: LabelDraft;
   layoutFingerprint: LayoutFingerprint | null;
@@ -59,6 +62,9 @@ export interface LabelState {
 
   hydratePreferences: (preferences: PreferencesV2, preserveText?: boolean) => void;
   setActiveProfile: (profile: PrinterProfile) => void;
+  setContentMode: (mode: ContentMode) => void;
+  /** A shipping image appeared, changed or was cleared: the label is a new revision. */
+  bumpRevision: () => void;
   setText: (text: string) => void;
   setOrientation: (orientation: Orientation) => void;
   setFontFamily: (family: string, resolved?: string) => void;
@@ -77,6 +83,7 @@ const initialPreferences = createDefaultPreferences();
 
 export const useLabelStore = create<LabelState>((set, get) => ({
   activeProfile: initialPreferences.activeProfile,
+  contentMode: 'text',
   profileSettings: cloneProfileSettings(initialPreferences),
   draft: makeDraft('4x6', initialPreferences.profiles['4x6']),
   layoutFingerprint: null,
@@ -90,6 +97,8 @@ export const useLabelStore = create<LabelState>((set, get) => ({
     const text = preserveText ? current.draft.text : '';
     set({
       activeProfile: profile,
+      // Optional chaining: test mocks and older payloads may lack the shipping-label block.
+      contentMode: preferences.shippingLabel?.mode4x6 ?? 'text',
       profileSettings: cloneProfileSettings(preferences),
       draft: makeDraft(
         profile,
@@ -114,6 +123,22 @@ export const useLabelStore = create<LabelState>((set, get) => ({
       overflow: false,
       isFontReady: false,
     });
+  },
+
+  setContentMode: (mode) => {
+    const s = get();
+    if (s.contentMode === mode) return;
+    set({
+      contentMode: mode,
+      draft: { ...s.draft, revision: s.draft.revision + 1 },
+      layoutFingerprint: null,
+      overflow: false,
+    });
+  },
+
+  bumpRevision: () => {
+    const s = get();
+    set({ draft: { ...s.draft, revision: s.draft.revision + 1 }, layoutFingerprint: null });
   },
 
   setText: (text: string) => {
@@ -211,6 +236,7 @@ export const useLabelStore = create<LabelState>((set, get) => ({
     const defaults = createDefaultPreferences();
     set({
       activeProfile: '4x6',
+      contentMode: 'text',
       profileSettings: cloneProfileSettings(defaults),
       draft: makeDraft('4x6', defaults.profiles['4x6'], '', current.draft.revision + 1, 1),
       layoutFingerprint: null,
@@ -218,3 +244,7 @@ export const useLabelStore = create<LabelState>((set, get) => ({
     });
   },
 }));
+
+/** The content mode actually shown: the 2 × 1 profile is always text. */
+export const selectEffectiveContentMode = (s: LabelState): ContentMode =>
+  s.activeProfile === '4x6' ? s.contentMode : 'text';

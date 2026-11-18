@@ -81,7 +81,7 @@ async function confirmClose(win: BrowserWindow, svc: AppServices): Promise<boole
     );
   }
   if (hasText) {
-    details.push('Label Maker does not save label text, so it cannot be reopened. Jobs already queued will still print.');
+    details.push("Label Maker does not save labels, so this label can't be reopened. Jobs already queued will still print.");
   }
 
   const { response } = await dialog.showMessageBox(win, {

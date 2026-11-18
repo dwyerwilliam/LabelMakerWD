@@ -1,11 +1,18 @@
 import { create } from 'zustand';
-import type { PreferencesUpdate, PreferencesV2, PrinterProfile, ProfilePreferences } from '@shared/contracts';
+import type {
+  PreferencesUpdate,
+  PreferencesV2,
+  PrinterProfile,
+  ProfilePreferences,
+  ShippingLabelPreferences,
+} from '@shared/contracts';
 import { createDefaultPreferences } from '@shared/defaults';
 
 function updatePayload(preferences: PreferencesV2): PreferencesUpdate {
   return {
     activeProfile: preferences.activeProfile,
     profiles: preferences.profiles,
+    shippingLabel: preferences.shippingLabel,
   };
 }
 
@@ -18,6 +25,8 @@ export interface PreferencesState {
   hydrate: (prefs: PreferencesV2) => void;
   update: (partial: PreferencesUpdate) => void;
   updateProfile: (profile: PrinterProfile, partial: Partial<ProfilePreferences>) => void;
+  /** Changes some shipping-label preferences and saves them. */
+  updateShipping: (partial: Partial<ShippingLabelPreferences>) => void;
   /** Re-sends the current preferences after a failed save. */
   retrySave: () => void;
   reset: (prefs?: PreferencesV2) => void;
@@ -52,6 +61,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => {
         ...partial,
         schemaVersion: 2,
         profiles: partial.profiles || current.profiles,
+        shippingLabel: partial.shippingLabel ?? current.shippingLabel,
       };
       set({ preferences: next });
       persist(next);
@@ -66,6 +76,13 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => {
           [profile]: { ...current.profiles[profile], ...partial },
         },
       };
+      set({ preferences: next });
+      persist(next);
+    },
+
+    updateShipping: (partial) => {
+      const current = get().preferences;
+      const next: PreferencesV2 = { ...current, shippingLabel: { ...current.shippingLabel, ...partial } };
       set({ preferences: next });
       persist(next);
     },

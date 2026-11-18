@@ -30,10 +30,36 @@ export interface PrinterChoice {
   usbConfirmed: boolean;
 }
 
+export type ContentMode = 'text' | 'image';
+
+export interface RememberedCrop {
+  pageWidthPt: number;
+  pageHeightPt: number;
+  /** Crop as fractions of the page in its displayed orientation (pdf.js viewport with the page's own /Rotate). */
+  rect: { x: number; y: number; width: number; height: number };
+  rotation: 0 | 90 | 180 | 270;
+}
+
+export interface ShippingLabelPreferences {
+  /** Which mode the 4 × 6 tab opens in. */
+  mode4x6: ContentMode;
+  darkness: 1 | 2 | 3 | 4 | 5;
+  /** Most recent first, at most 8. */
+  rememberedCrops: RememberedCrop[];
+}
+
+export interface ShippingImagePayload {
+  /** Base64 (no data: prefix) of an 812 × 1218 PNG. */
+  pngBase64: string;
+  widthPx: 812;
+  heightPx: 1218;
+}
+
 export interface PreferencesV2 {
   schemaVersion: 2;
   activeProfile: PrinterProfile;
   profiles: Record<PrinterProfile, ProfilePreferences>;
+  shippingLabel: ShippingLabelPreferences;
 }
 
 /** Something about the saved settings the user should be told. */
@@ -52,7 +78,7 @@ export interface LaunchInfo {
   settingsProblem?: SettingsProblem | null;
 }
 
-export type PreferencesUpdate = Partial<Pick<PreferencesV2, 'activeProfile' | 'profiles'>>;
+export type PreferencesUpdate = Partial<Pick<PreferencesV2, 'activeProfile' | 'profiles' | 'shippingLabel'>>;
 
 export interface LayoutFingerprint {
   logicalWidthPt: number;
@@ -65,6 +91,8 @@ export interface LayoutFingerprint {
 export interface PrintSnapshot {
   requestId: string;
   draftRevision: number;
+  /** 'text' for the text editor; 'image' for a shipping label. */
+  contentKind: ContentMode;
   text: string;
   profile: PrinterProfile;
   orientation: Orientation;
@@ -73,6 +101,8 @@ export interface PrintSnapshot {
   alignment: Alignment;
   copies: number;
   expectedLayout: LayoutFingerprint;
+  /** Present only when contentKind is 'image'. */
+  image?: ShippingImagePayload;
 }
 
 export type PrintState =

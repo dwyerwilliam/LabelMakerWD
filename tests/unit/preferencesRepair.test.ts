@@ -74,4 +74,24 @@ describe('repairPreferences', () => {
     expect(preferences.profiles['2x1']).toEqual(createDefaultPreferences().profiles['2x1']);
     expect(preferences.profiles['4x6'].fontFamily).toBe('Verdana');
   });
+  it('keeps valid shipping-label settings and treats a missing block as defaults', () => {
+    const file = validFile() as unknown as Record<string, any>;
+    file.shippingLabel = { mode4x6: 'image', darkness: 4, rememberedCrops: [] };
+    file.profiles['4x6'].fontSizePt = 7.3; // forces the repair path
+    expect(repairPreferences(file)!.preferences.shippingLabel).toEqual(file.shippingLabel);
+
+    delete file.shippingLabel;
+    const { preferences, repaired } = repairPreferences(file)!;
+    expect(preferences.shippingLabel).toEqual(createDefaultPreferences().shippingLabel);
+    expect(repaired).not.toContain('shippingLabel');
+  });
+
+  it('resets invalid shipping-label settings on their own', () => {
+    const file = validFile() as unknown as Record<string, any>;
+    file.shippingLabel = { mode4x6: 'image', darkness: 2, rememberedCrops: [{ nonsense: true }] };
+    const { preferences, repaired } = repairPreferences(file)!;
+    expect(repaired).toEqual(['shippingLabel']);
+    expect(preferences.shippingLabel).toEqual(createDefaultPreferences().shippingLabel);
+    expect(preferences.profiles['4x6'].fontFamily).toBe('Verdana');
+  });
 });

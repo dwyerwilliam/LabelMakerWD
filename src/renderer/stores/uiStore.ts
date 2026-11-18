@@ -7,7 +7,14 @@ export type DialogType =
   | 'confirm-clip'
   | 'confirm-unavailable'
   | 'confirm-uncertain'
-  | 'confirm-reset';
+  | 'confirm-reset'
+  | 'shipping-crop';
+
+/** The inline message in the shipping-label view. */
+export interface ShippingMessage {
+  kind: 'error' | 'info';
+  text: string;
+}
 
 export interface UIState {
   activeDialog: DialogType;
@@ -21,6 +28,9 @@ export interface UIState {
   notice: string | null;
   fontSearchQuery: string;
   fontPickerOpen: boolean;
+  shippingMessage: ShippingMessage | null;
+  /** A file is being dragged over the window. */
+  dragActive: boolean;
 
   openDialog: (dialog: DialogType) => void;
   closeDialog: () => void;
@@ -33,6 +43,8 @@ export interface UIState {
   setNotice: (notice: string | null) => void;
   setFontSearchQuery: (query: string) => void;
   setFontPickerOpen: (open: boolean) => void;
+  setShippingMessage: (message: ShippingMessage | null) => void;
+  setDragActive: (active: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -45,6 +57,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   notice: null,
   fontSearchQuery: '',
   fontPickerOpen: false,
+  shippingMessage: null,
+  dragActive: false,
 
   openDialog: (dialog: DialogType) => set({ activeDialog: dialog }),
   closeDialog: () => set({ activeDialog: 'none' }),
@@ -65,4 +79,6 @@ export const useUIStore = create<UIState>((set, get) => ({
   setNotice: (notice: string | null) => set({ notice }),
   setFontSearchQuery: (fontSearchQuery: string) => set({ fontSearchQuery }),
   setFontPickerOpen: (fontPickerOpen: boolean) => set({ fontPickerOpen }),
+  setShippingMessage: (shippingMessage) => set({ shippingMessage }),
+  setDragActive: (dragActive) => set({ dragActive }),
 }));

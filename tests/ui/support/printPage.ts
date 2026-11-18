@@ -14,6 +14,7 @@ export interface ReportedLayout {
 export interface TestJob {
   requestId: string;
   draftRevision: number;
+  contentKind: 'text' | 'image';
   text: string;
   profile: '4x6' | '2x1';
   orientation: 'portrait' | 'landscape';
@@ -22,6 +23,7 @@ export interface TestJob {
   alignment: 'left' | 'center' | 'right';
   copies: number;
   expectedLayout: ReportedLayout;
+  image?: { pngBase64: string; widthPx: 812; heightPx: 1218 };
 }
 
 let jobNumber = 0;
@@ -36,6 +38,7 @@ export function makeJob(
   return {
     requestId: `00000000-0000-4000-8000-${String(jobNumber).padStart(12, '0')}`,
     draftRevision: jobNumber,
+    contentKind: 'text',
     text,
     profile,
     orientation,
@@ -75,4 +78,29 @@ export async function sendJob(page: Page, job: TestJob): Promise<ReportedLayout>
       }),
     job
   );
+}
+
+/** A shipping-label job for a PNG (base64) of an 812 × 1218 label. */
+export function makeImageJob(pngBase64: string): TestJob {
+  return {
+    ...makeJob('4x6', 'portrait', ''),
+    contentKind: 'image',
+    expectedLayout: { logicalWidthPt: 288, logicalHeightPt: 432, lineRectsPt: [], lineTextOffsets: [], overflow: false },
+    image: { pngBase64, widthPx: 812, heightPx: 1218 },
+  };
+}
+
+/** An 812 × 1218 black-and-white PNG (base64) drawn in the page. */
+export async function makeLabelPng(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const c = document.createElement('canvas');
+    c.width = 812;
+    c.height = 1218;
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, 812, 1218);
+    ctx.fillStyle = '#000';
+    for (let x = 100; x < 700; x += 12) ctx.fillRect(x, 800, 6, 200);
+    return c.toDataURL('image/png').split(',')[1];
+  });
 }
