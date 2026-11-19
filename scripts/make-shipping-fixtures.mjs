@@ -172,6 +172,13 @@ async function save(doc, name) {
   await save(doc, 'no-label.pdf');
 }
 
+// blank-letter.pdf: an empty letter page with no ink at all.
+{
+  const { doc } = await newDoc();
+  doc.addPage(LETTER);
+  await save(doc, 'blank-letter.pdf');
+}
+
 /**
  * A 6 × 4 region at the top of a letter page holding a portrait label printed sideways, the way
  * eBay lays its labels out. `reading`: 'down' (eBay: the label's top is toward the page's right)

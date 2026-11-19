@@ -19,6 +19,7 @@ async function open(page: Page): Promise<void> {
       label: (await import('/src/renderer/stores/labelStore.ts' as string)).useLabelStore,
       ui: (await import('/src/renderer/stores/uiStore.ts' as string)).useUIStore,
       prefs: (await import('/src/renderer/stores/preferencesStore.ts' as string)).usePreferencesStore,
+      render: await import('/src/renderer/shipping/render.ts' as string),
     };
     /** Waits until the store is idle. */
     w.__shipIdle = async () => {
@@ -389,4 +390,34 @@ test('a remembered crop keeps its area but takes its turn from the text (a stale
   expect(s.dialog!.status).toBe('Using the area you chose last time for this page size.');
   expect(s.dialog!.initial.crop).toEqual({ x: 0.13, y: 0.04, width: 0.74, height: 0.39 });
   expect(s.dialog!.initial.rotation).toBe(270);
+});
+
+test('renderPreviewThumbnail reports blank for a blank PDF and a blank sub-crop', async ({ page }) => {
+  await loadFixture(page, 'blank-letter.pdf');
+  const blankPdfThumb = await page.evaluate(async () => {
+    const w = window as any;
+    const { cropDialog } = w.__ship.store.getState();
+    const res = await w.__ship.render.renderPreviewThumbnail(cropDialog.source, cropDialog.initial, 3);
+    const dims = [res.canvas.width, res.canvas.height];
+    w.__ship.render.releaseCanvas(res.canvas);
+    return { blank: res.blank, dims };
+  });
+  expect(blankPdfThumb).toEqual({ blank: true, dims: [812, 1218] });
+
+  await loadFixture(page, 'ebay-letter.pdf');
+  const ebayResults = await page.evaluate(async () => {
+    const w = window as any;
+    const { cropDialog } = w.__ship.store.getState();
+    const labelRes = await w.__ship.render.renderPreviewThumbnail(cropDialog.source, cropDialog.initial, 3);
+    const labelBlank = labelRes.blank;
+    w.__ship.render.releaseCanvas(labelRes.canvas);
+
+    const emptyChoice = { pageIndex: 0, crop: { x: 0.65, y: 0.1, width: 0.3, height: 0.3 }, rotation: 0 };
+    const emptyRes = await w.__ship.render.renderPreviewThumbnail(cropDialog.source, emptyChoice, 3);
+    const emptyBlank = emptyRes.blank;
+    w.__ship.render.releaseCanvas(emptyRes.canvas);
+
+    return { labelBlank, emptyBlank };
+  });
+  expect(ebayResults).toEqual({ labelBlank: false, emptyBlank: true });
 });

@@ -141,13 +141,19 @@ async function composeLabelCanvas(
   };
 }
 
-/** The black-and-white label canvas only, for the crop dialog's live thumbnail. */
+export interface PreviewThumbnail {
+  canvas: HTMLCanvasElement;
+  blank: boolean;
+}
+
+/** The black-and-white label canvas and blank flag, for the crop dialog's live thumbnail. */
 export async function renderPreviewThumbnail(
   source: LoadedSource,
   choice: CropChoice,
   darkness: Darkness
-): Promise<HTMLCanvasElement> {
-  return (await composeLabelCanvas(source, choice, darkness)).canvas;
+): Promise<PreviewThumbnail> {
+  const { canvas, metrics } = await composeLabelCanvas(source, choice, darkness);
+  return { canvas, blank: metrics.blank };
 }
 
 function captionFor(source: LoadedSource, choice: CropChoice, metrics: ComposeMetrics): string {
