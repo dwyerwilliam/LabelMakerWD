@@ -1004,12 +1004,13 @@ At the very top of the existing `onPaste` handler, add:
 
 ```ts
 const plain = e.clipboardData.getData('text/plain');
-if (plain === '' && useLabelStore.getState().activeProfile === '4x6') {
+if (plain === '') {
   const { file } = pickSupportedFile(e.clipboardData);
   if (file) {
     e.preventDefault();
-    // hand off to the shipping flow; the editor unmounts when the mode changes
-    void useShippingStore.getState().loadBlob(file, null, 'clipboard'); // loadBlob switches the mode; the editor then unmounts
+    // hand off to the shipping flow on either tab; loadBlob switches to 4 × 6 / Shipping label
+    // (with the 4 × 6 notice when coming from 2 × 1) once the file reads, then the editor unmounts
+    loadPastedFile(file);
     return;
   }
 }
