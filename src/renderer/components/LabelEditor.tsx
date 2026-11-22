@@ -106,8 +106,8 @@ export const LabelEditor: React.FC = () => {
     e.preventDefault();
     const plain = e.clipboardData.getData('text/plain');
 
-    // A screen snip (no text) pasted on the 4 × 6 tab becomes a shipping label; plain text always wins.
-    if (plain === '' && useLabelStore.getState().activeProfile === '4x6') {
+    // A screen snip or supported file (no plain text) becomes a shipping label on either tab; plain text always wins.
+    if (plain === '') {
       const { file } = pickSupportedFile(e.clipboardData);
       if (file) {
         loadPastedFile(file);

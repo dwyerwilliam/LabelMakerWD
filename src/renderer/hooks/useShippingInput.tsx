@@ -59,6 +59,7 @@ export function pickSupportedFile(dt: DataTransfer | null): PickedFile {
 
 /** Starts loading a pasted file: images count as clipboard snips, PDFs keep their name. */
 export function loadPastedFile(file: File): void {
+  if (inputBlocked()) return;
   const isPdf = classifyFile(file.name, file.type) === 'pdf';
   void useShippingStore.getState().loadBlob(file, isPdf ? file.name : null, isPdf ? 'file' : 'clipboard');
 }

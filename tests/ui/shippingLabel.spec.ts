@@ -104,6 +104,7 @@ function expectNear(actual: number[], expected: number[], tolerance = 0.03): voi
 }
 
 const NOT_FOUND = "Couldn't find a 4 × 6 label on this page. Drag the box around the label.";
+const BLANK_WARNING = 'This area is blank. Choose the part of the page with the label.';
 
 test('S06: an eBay-style page opens with the box around the label only, which prints at actual size', async ({ page }) => {
   await openInShippingMode(page);
@@ -264,6 +265,77 @@ test('S12: the accepted area is offered next time, and Settings can forget it', 
   await expect(page.getByTestId('crop-status')).toHaveCount(0); // detected again: no remembered area
 });
 
+test('S17 / F-03: a blank PDF warns inside the crop dialog with Use this area enabled', async ({ page }) => {
+  await openInShippingMode(page);
+  await openPdf(page, 'blank-letter.pdf');
+  const dialog = page.getByRole('dialog', { name: 'Choose the label area' });
+
+  await expect(dialog.getByTestId('crop-thumbnail')).toBeVisible();
+  await expect(dialog.getByTestId('crop-blank-warning')).toBeVisible();
+  await expect(dialog.getByTestId('crop-blank-warning')).toHaveAttribute('role', 'alert');
+  await expect(dialog.getByTestId('crop-blank-warning')).toHaveText(BLANK_WARNING);
+  await expect(dialog.getByTestId('crop-status')).toHaveText(NOT_FOUND);
+  await expect(dialog.getByRole('button', { name: 'Use this area' })).toBeEnabled();
+
+  await dialog.getByRole('button', { name: 'Use this area' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByTestId('shipping-preview')).toBeVisible();
+  await expect(page.getByTestId('shipping-message')).toContainText(BLANK_WARNING);
+  await expect(printButton(page)).toBeEnabled();
+});
+
+test('F-03: drawing a blank crop on a non-blank PDF warns inside the dialog and clears on Auto-detect', async ({ page }) => {
+  await openInShippingMode(page);
+  await openPdf(page, 'ebay-letter.pdf');
+  const dialog = page.getByRole('dialog', { name: 'Choose the label area' });
+
+  await expect(dialog.getByTestId('crop-thumbnail')).toBeVisible();
+  await expect(dialog.getByTestId('crop-blank-warning')).toHaveCount(0);
+
+  // Draw a box in the blank upper-right quadrant of ebay-letter.pdf.
+  const pg = (await page.getByTestId('crop-page').boundingBox())!;
+  await page.mouse.move(pg.x + pg.width * 0.65, pg.y + pg.height * 0.1);
+  await page.mouse.down();
+  await page.mouse.move(pg.x + pg.width * 0.95, pg.y + pg.height * 0.4, { steps: 4 });
+  await page.mouse.up();
+
+  await expect(dialog.getByTestId('crop-blank-warning')).toBeVisible();
+  await expect(dialog.getByTestId('crop-blank-warning')).toHaveText(BLANK_WARNING);
+  await expect(dialog.getByRole('button', { name: 'Use this area' })).toBeEnabled();
+
+  await dialog.getByRole('button', { name: 'Auto-detect' }).click();
+  await expect(dialog.getByTestId('crop-blank-warning')).toHaveCount(0);
+});
+
+test('F-03: Adjust crop on a blank image warns inside the crop dialog', async ({ page }) => {
+  await openInShippingMode(page);
+  const blankPngBytes = await page.evaluate(async () => {
+    const c = document.createElement('canvas');
+    c.width = 800;
+    c.height = 1200;
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 800, 1200);
+    const blob = await new Promise<Blob>((resolve) => c.toBlob((b) => resolve(b!), 'image/png'));
+    return [...new Uint8Array(await blob.arrayBuffer())];
+  });
+  await page.setInputFiles('[data-testid=shipping-file-input]', {
+    name: 'blank.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(blankPngBytes),
+  });
+
+  await expect(page.getByTestId('shipping-preview')).toBeVisible();
+  await expect(page.getByTestId('shipping-message')).toContainText(BLANK_WARNING);
+
+  await page.getByRole('button', { name: 'Adjust crop…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Choose the label area' });
+  await expect(dialog.getByTestId('crop-thumbnail')).toBeVisible();
+  await expect(dialog.getByTestId('crop-blank-warning')).toBeVisible();
+  await expect(dialog.getByTestId('crop-blank-warning')).toHaveText(BLANK_WARNING);
+  await expect(dialog.getByRole('button', { name: 'Use this area' })).toBeEnabled();
+});
+
 // ---------------------------------------------------------------------------
 // Accessibility of the new screens (spec §14.3, item 17)
 // ---------------------------------------------------------------------------
@@ -282,6 +354,12 @@ for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await openInShippingMode(page);
     expect(await axeViolations(page), 'empty view').toEqual([]);
+
+    await openPdf(page, 'blank-letter.pdf');
+    await expect(page.getByTestId('crop-blank-warning')).toBeVisible();
+    expect(await axeViolations(page), 'crop dialog with blank warning').toEqual([]);
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
 
     await openPdf(page, 'two-page.pdf');
     await expect(page.getByTestId('crop-thumbnail')).toBeVisible();

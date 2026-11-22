@@ -838,7 +838,7 @@ Steps:
 
 ### 8.3 `renderPreviewThumbnail` for the crop dialog
 
-Same as `renderShippingLabel` but **skip step 7 and the metrics**. Return the final thresholded canvas, so the dialog can draw it scaled down. Implement it by sharing a private `composeLabelCanvas(source, choice, darkness)` used by both functions.
+Same as `renderShippingLabel` but **skip step 7 and the full metrics**. Return `{ canvas, blank }` from the shared private `composeLabelCanvas(source, choice, darkness)` so the dialog can show the scaled-down thumbnail and the blank-area warning (FS §6).
 
 ---
 
@@ -1004,12 +1004,13 @@ At the very top of the existing `onPaste` handler, add:
 
 ```ts
 const plain = e.clipboardData.getData('text/plain');
-if (plain === '' && useLabelStore.getState().activeProfile === '4x6') {
+if (plain === '') {
   const { file } = pickSupportedFile(e.clipboardData);
   if (file) {
     e.preventDefault();
-    // hand off to the shipping flow; the editor unmounts when the mode changes
-    void useShippingStore.getState().loadBlob(file, null, 'clipboard'); // loadBlob switches the mode; the editor then unmounts
+    // hand off to the shipping flow on either tab; loadBlob switches to 4 × 6 / Shipping label
+    // (with the 4 × 6 notice when coming from 2 × 1) once the file reads, then the editor unmounts
+    loadPastedFile(file);
     return;
   }
 }
@@ -1132,7 +1133,7 @@ Rendered by `App` when `activeDialog === 'shipping-crop' && shippingStore.cropDi
 - Shift+ArrowRight / Shift+ArrowLeft: change `width` by ±0.01. Shift+ArrowDown / Shift+ArrowUp: change `height` by ±0.01.
 - Always clamp, and `preventDefault` for handled keys.
 
-**Thumbnail.** Debounce 200 ms after any change of `crop`, `rotation`, or `pageIndex`: `renderPreviewThumbnail(source, { pageIndex, crop, rotation }, darkness)` → `toBlob` → URL → show at 120 × 180 CSS px with `image-rendering: pixelated`. Ignore stale results using a local sequence counter.
+**Thumbnail.** Debounce 200 ms after any change of `crop`, `rotation`, or `pageIndex`: `renderPreviewThumbnail(source, { pageIndex, crop, rotation }, darkness)` → `{ canvas, blank }` → `toBlob` → URL → show at 120 × 180 CSS px with `image-rendering: pixelated`. Ignore stale results using a local sequence counter/cancellation flag. When `blank` is true, show `MESSAGES.blank` under the readout while keeping **Use this area** enabled (FS §6).
 
 **Readout** under the thumbnail:
 

@@ -138,6 +138,69 @@ test('S03: in Text mode, an image-only paste into the editor becomes a shipping 
   await expect(page.getByTestId('shipping-preview')).toBeVisible();
 });
 
+test('F-04: pasting an image into the focused 2 × 1 editor switches to 4 × 6 Shipping label with a notice and keeps the text', async ({ page }) => {
+  await open(page, { queues: ['4x6', '2x1'] });
+  await page.getByRole('tab', { name: '2 × 1' }).click();
+  await page.getByRole('textbox', { name: 'Label text editor' }).click();
+  await page.keyboard.type('Small label text');
+
+  await pasteSnip(page, { target: '[aria-label="Label text editor"]' });
+  await expect(page.getByRole('tab', { name: '4 × 6' })).toHaveAttribute('aria-selected', 'true');
+  await expect(modeButton(page, 'Shipping label')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('shipping-preview')).toBeVisible();
+  await expect(page.getByText('Shipping labels print on the 4 × 6 printer.')).toBeVisible();
+
+  await page.getByRole('tab', { name: '2 × 1' }).click();
+  await expect(page.getByRole('textbox', { name: 'Label text editor' })).toHaveText('Small label text');
+});
+
+test('F-04: plain text still wins over an image when pasted into the focused 2 × 1 editor', async ({ page }) => {
+  await open(page, { queues: ['4x6', '2x1'] });
+  await page.getByRole('tab', { name: '2 × 1' }).click();
+  await page.getByRole('textbox', { name: 'Label text editor' }).click();
+  await pasteSnip(page, { target: '[aria-label="Label text editor"]', text: '2x1 words' });
+
+  await expect(page.getByRole('tab', { name: '2 × 1' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('textbox', { name: 'Label text editor' })).toHaveText('2x1 words');
+  await expect(page.getByTestId('shipping-preview')).toHaveCount(0);
+});
+
+test('F-04: pasting a supported PDF into the focused 2 × 1 editor switches to 4 × 6 Shipping label and shows the notice', async ({ page }) => {
+  await open(page, { queues: ['4x6', '2x1'] });
+  await page.getByRole('tab', { name: '2 × 1' }).click();
+  await page.getByRole('textbox', { name: 'Label text editor' }).click();
+
+  await page.evaluate((bytes) => {
+    const dt = new DataTransfer();
+    dt.items.add(new File([new Uint8Array(bytes)], 'label-4x6.pdf', { type: 'application/pdf' }));
+    const editor = document.querySelector('[aria-label="Label text editor"]')!;
+    editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  }, fixtureBytes('label-4x6.pdf'));
+
+  await expect(page.getByRole('tab', { name: '4 × 6' })).toHaveAttribute('aria-selected', 'true');
+  await expect(modeButton(page, 'Shipping label')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('shipping-caption')).toHaveText('From label-4x6.pdf, page 1 · actual size');
+  await expect(page.getByText('Shipping labels print on the 4 × 6 printer.')).toBeVisible();
+});
+
+test('F-04: pasting an unreadable image into the focused 2 × 1 editor changes nothing and reports the error', async ({ page }) => {
+  await open(page, { queues: ['4x6', '2x1'] });
+  await page.getByRole('tab', { name: '2 × 1' }).click();
+  await page.getByRole('textbox', { name: 'Label text editor' }).click();
+  await page.keyboard.type('Keep me');
+
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(['not a png'], 'image.png', { type: 'image/png' }));
+    const editor = document.querySelector('[aria-label="Label text editor"]')!;
+    editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+
+  await expect(page.getByText("The clipboard image couldn't be read.")).toBeVisible();
+  await expect(page.getByRole('tab', { name: '2 × 1' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('textbox', { name: 'Label text editor' })).toHaveText('Keep me');
+});
+
 test('S04: a sideways snip is turned to portrait, and Rotate changes it', async ({ page }) => {
   await open(page, { shippingLabel: { mode4x6: 'image', darkness: 3, rememberedCrops: [] } });
   await pasteSnip(page, { width: 1800, height: 1200 });

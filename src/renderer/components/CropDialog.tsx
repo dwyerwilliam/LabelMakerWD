@@ -90,6 +90,7 @@ const CropDialogBody: React.FC<{ dialog: CropDialogState }> = ({ dialog }) => {
   const [pageUrl, setPageUrl] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+  const [thumbBlank, setThumbBlank] = useState(false);
   const [area, setArea] = useState({ width: 0, height: 0 });
 
   const areaRef = useRef<HTMLDivElement>(null);
@@ -167,7 +168,11 @@ const CropDialogBody: React.FC<{ dialog: CropDialogState }> = ({ dialog }) => {
     let cancelled = false;
     const timer = setTimeout(() => {
       renderPreviewThumbnail(source, { pageIndex, crop, rotation }, darkness).then(
-        (canvas) =>
+        ({ canvas, blank }) => {
+          if (cancelled) {
+            releaseCanvas(canvas);
+            return;
+          }
           canvas.toBlob((blob) => {
             releaseCanvas(canvas);
             if (!blob || cancelled) return;
@@ -176,8 +181,12 @@ const CropDialogBody: React.FC<{ dialog: CropDialogState }> = ({ dialog }) => {
               if (old) URL.revokeObjectURL(old);
               return url;
             });
-          }, 'image/png'),
-        () => undefined
+            setThumbBlank(blank);
+          }, 'image/png');
+        },
+        () => {
+          if (!cancelled) setThumbBlank(false);
+        }
       );
     }, 200);
     return () => {
@@ -387,14 +396,23 @@ const CropDialogBody: React.FC<{ dialog: CropDialogState }> = ({ dialog }) => {
           )}
         </div>
 
-        <aside className="flex w-52 shrink-0 flex-col items-center gap-3 border-l border-slate-200 p-4 dark:border-slate-700">
+        <aside className="flex w-52 shrink-0 flex-col items-center gap-3 overflow-y-auto border-l border-slate-200 p-4 dark:border-slate-700">
           <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Prints as</p>
-          <div className="flex h-[180px] w-[120px] items-center justify-center bg-white ring-1 ring-slate-300 dark:ring-slate-600">
+          <div className="flex h-[180px] w-[120px] shrink-0 items-center justify-center bg-white ring-1 ring-slate-300 dark:ring-slate-600">
             {thumbUrl && <img src={thumbUrl} alt="4 × 6 label preview" className="h-full w-full" data-testid="crop-thumbnail" />}
           </div>
           <p className="text-center text-xs text-slate-600 dark:text-slate-300" data-testid="crop-readout">
             {readout}
           </p>
+          {thumbBlank && (
+            <p
+              role="alert"
+              className="rounded-sm bg-amber-50 px-2.5 py-2 text-center text-xs font-medium text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-800"
+              data-testid="crop-blank-warning"
+            >
+              {MESSAGES.blank}
+            </p>
+          )}
         </aside>
       </div>
 
